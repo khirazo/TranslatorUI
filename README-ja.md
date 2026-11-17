@@ -54,6 +54,54 @@ PLaMo翻訳モデルは長文翻訳に対応していますが、ほとんどの
 sudo docker-compose up -d
 ```
 
+### Python テキスト翻訳 API の並行検証
+
+PDF API と既存 Ruby UI を変更せずに、PLaMo 3 Translate 用のテキスト翻訳 API をポート 4568
+で検証できます。リポジトリー直下に `.env.example` をコピーして `.env` を作成し、LM Studio
+が公開している実際のモデル ID と接続先を設定してください。`LLM_ENDPOINT` は `/v1` を含めない
+ルート URL です。
+
+```bash
+cp .env.example .env
+python3.12 -m venv .venv
+. .venv/bin/activate
+pip install -r translator_ui/requirements.txt
+cd translator_ui
+uvicorn app.main:app --host 0.0.0.0 --port 4568
+```
+
+Windows PowerShell では、仮想環境の有効化と起動を次のように置き換えます。
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r translator_ui\requirements.txt
+$env:PYTHONPATH = (Resolve-Path translator_ui).Path
+uvicorn app.main:app --host 0.0.0.0 --port 4568
+```
+
+PowerShell の実行ポリシーにより `Activate.ps1` を実行できない場合は、仮想環境を有効化せずに
+仮想環境内の Python を直接使えます。
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r translator_ui\requirements.txt
+$env:PYTHONPATH = (Resolve-Path translator_ui).Path
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 4568
+```
+
+起動後は、別の PowerShell で次のヘルスチェックを実行できます。
+
+```powershell
+Invoke-RestMethod http://localhost:4568/health
+```
+
+`{"status":"ok"}` が返れば、Python API は起動しています。
+
+この段階では `SAVE_TRANSLATIONS=false` のままにしてください。Ruby と Python が同じ
+`localingo/data/translations.json` を同時に更新しないためです。Python MVP は `auto` と
+`ja-easy` をまだ受け付けません。
+
 ### Cloudflare Tunnelを用いて外部公開する場合
 
 Cloudflareのサービスについての詳細な説明は他のドキュメントを参照してください。

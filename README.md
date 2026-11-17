@@ -54,6 +54,52 @@ While the PLaMo translation model supports long-form translations, most LLM serv
 sudo docker-compose up -d
 ```
 
+### Parallel verification of the Python text-translation API
+
+The PLaMo 3 Translate text API can be verified on port 4568 without changing the PDF API or
+existing Ruby UI. Copy `.env.example` to `.env`, then set the actual model ID and endpoint exposed
+by LM Studio. `LLM_ENDPOINT` must be the root URL without `/v1`.
+
+```bash
+cp .env.example .env
+python3.12 -m venv .venv
+. .venv/bin/activate
+pip install -r translator_ui/requirements.txt
+cd translator_ui
+uvicorn app.main:app --host 0.0.0.0 --port 4568
+```
+
+On Windows PowerShell, use the following activation and launch commands instead:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r translator_ui\requirements.txt
+$env:PYTHONPATH = (Resolve-Path translator_ui).Path
+uvicorn app.main:app --host 0.0.0.0 --port 4568
+```
+
+If the PowerShell execution policy prevents `Activate.ps1` from running, you can use the virtual
+environment's Python executable directly instead of activating it:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r translator_ui\requirements.txt
+$env:PYTHONPATH = (Resolve-Path translator_ui).Path
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 4568
+```
+
+After starting the service, check its health from another PowerShell window:
+
+```powershell
+Invoke-RestMethod http://localhost:4568/health
+```
+
+The expected response is `{"status":"ok"}`.
+
+Keep `SAVE_TRANSLATIONS=false` during this stage so Ruby and Python do not concurrently update
+`localingo/data/translations.json`. The Python MVP does not yet accept `auto` or `ja-easy`.
+
 ### Exposing the Service via Cloudflare Tunnel
 
 For detailed instructions about Cloudflare's services, please refer to other documentation resources.

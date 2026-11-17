@@ -1,5 +1,20 @@
 .env
 
+# Python virtual environments, bytecode, test caches, and build artifacts.
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+
 # Local planning, working files, and machine-specific instructions.
 /work/
 /AGENTS.local.md
