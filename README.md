@@ -60,36 +60,45 @@ The PLaMo 3 Translate text API can be verified on port 4568 without changing the
 existing Ruby UI. Copy `.env.example` to `.env`, then set the actual model ID and endpoint exposed
 by LM Studio. `LLM_ENDPOINT` must be the root URL without `/v1`.
 
+On macOS, Linux, or WSL, run the wrapper from the repository root. It uses an existing `.venv`, or
+creates one with Python 3.12 or newer, installs missing dependencies, and starts the API without
+requiring virtual-environment activation:
+
 ```bash
-cp .env.example .env
-python3.12 -m venv .venv
-. .venv/bin/activate
-pip install -r translator_ui/requirements.txt
-cd translator_ui
-uvicorn app.main:app --host 0.0.0.0 --port 4568
+./start-translator-ui.sh
 ```
 
-On Windows PowerShell, use the following activation and launch commands instead:
+On Windows PowerShell, use the PowerShell wrapper with the same name:
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r translator_ui\requirements.txt
-$env:PYTHONPATH = (Resolve-Path translator_ui).Path
-uvicorn app.main:app --host 0.0.0.0 --port 4568
+.\start-translator-ui.ps1
 ```
 
-If the PowerShell execution policy prevents `Activate.ps1` from running, you can use the virtual
-environment's Python executable directly instead of activating it:
+By default, it binds only to `127.0.0.1:4568`. To make it reachable externally or use another
+port, pass the corresponding arguments. On macOS, Linux, or WSL:
+
+```bash
+./start-translator-ui.sh --listen-host 0.0.0.0 --port 4568
+```
+
+On PowerShell:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r translator_ui\requirements.txt
-$env:PYTHONPATH = (Resolve-Path translator_ui).Path
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 4568
+.\start-translator-ui.ps1 -ListenHost 0.0.0.0 -Port 4568
 ```
 
-After starting the service, check its health from another PowerShell window:
+Use `--install-dependencies` / `-InstallDependencies` to explicitly refresh dependencies, or
+`--recreate-venv` / `-RecreateVenv` to recreate an existing virtual environment. If `.env` does not
+exist, either wrapper creates one from `.env.example` with `LLM_ENDPOINT=http://localhost:1234` for
+direct host execution. Then confirm the actual model ID published by LM Studio.
+
+After starting the service, check its health from another macOS, Linux, or WSL terminal:
+
+```bash
+curl http://localhost:4568/health
+```
+
+On PowerShell, use:
 
 ```powershell
 Invoke-RestMethod http://localhost:4568/health

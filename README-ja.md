@@ -61,36 +61,46 @@ PDF API と既存 Ruby UI を変更せずに、PLaMo 3 Translate 用のテキス
 が公開している実際のモデル ID と接続先を設定してください。`LLM_ENDPOINT` は `/v1` を含めない
 ルート URL です。
 
+macOS / Linux / WSL では、リポジトリー直下から次のラッパーを実行してください。
+既存の `.venv` を利用し、存在しない場合は Python 3.12 以上（より新しい版を含む）で作成し、
+不足している依存関係を導入してから API を起動します。仮想環境の有効化は不要です。
+
 ```bash
-cp .env.example .env
-python3.12 -m venv .venv
-. .venv/bin/activate
-pip install -r translator_ui/requirements.txt
-cd translator_ui
-uvicorn app.main:app --host 0.0.0.0 --port 4568
+./start-translator-ui.sh
 ```
 
-Windows PowerShell では、仮想環境の有効化と起動を次のように置き換えます。
+Windows PowerShell では、同じ命名規則の PowerShell ラッパーを使用します。
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r translator_ui\requirements.txt
-$env:PYTHONPATH = (Resolve-Path translator_ui).Path
-uvicorn app.main:app --host 0.0.0.0 --port 4568
+.\start-translator-ui.ps1
 ```
 
-PowerShell の実行ポリシーにより `Activate.ps1` を実行できない場合は、仮想環境を有効化せずに
-仮想環境内の Python を直接使えます。
+既定ではローカル専用の `127.0.0.1:4568` で起動します。外部から到達可能にする場合や、別ポートを
+使う場合は引数を指定します。WSL を含む macOS / Linux では次のように指定します。
+
+```bash
+./start-translator-ui.sh --listen-host 0.0.0.0 --port 4568
+```
+
+PowerShell では次のように指定します。
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r translator_ui\requirements.txt
-$env:PYTHONPATH = (Resolve-Path translator_ui).Path
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 4568
+.\start-translator-ui.ps1 -ListenHost 0.0.0.0 -Port 4568
 ```
 
-起動後は、別の PowerShell で次のヘルスチェックを実行できます。
+依存関係を明示的に更新するには、Bash では `--install-dependencies`、PowerShell では
+`-InstallDependencies` を指定します。仮想環境を作り直すには、Bash では `--recreate-venv`、
+PowerShell では `-RecreateVenv` を指定します。`.env` がない場合は、ラッパーが `.env.example` を基に
+ホスト直接実行用の `LLM_ENDPOINT=http://localhost:1234` を設定した `.env` を作成します。
+作成後は LM Studio が公開している実際のモデル ID を確認してください。
+
+起動後は、macOS / Linux / WSL では別の端末から次のヘルスチェックを実行できます。
+
+```bash
+curl http://localhost:4568/health
+```
+
+PowerShell では次を実行します。
 
 ```powershell
 Invoke-RestMethod http://localhost:4568/health
