@@ -7,9 +7,10 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator, Callable
+from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.config import Settings
@@ -18,6 +19,8 @@ from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.storage import save_text_translation
 
 logger = logging.getLogger(__name__)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+INDEX_FILE = STATIC_DIR / "index.html"
 
 LANGUAGE_CODES = {
     "ja",
@@ -61,6 +64,77 @@ def _validate_language_pair(source_lang: str, target_lang: str) -> tuple[str, st
     )
 
 
+async def stream_translation_events(
+    *,
+    payload: TranslateRequest,
+    request: Request,
+    settings: Settings,
+    provider_factory: Callable[[Settings], TranslationProvider],
+) -> AsyncIterator[str]:
+    """Produce client-facing SSE events and stop the provider on browser disconnect."""
+    if not payload.text:
+        yield _sse({"error": "text must not be empty."})
+        return
+    language_pair = _validate_language_pair(payload.source_lang, payload.target_lang)
+    if isinstance(language_pair, str):
+        yield _sse({"error": language_pair})
+        return
+
+    source_lang, target_lang = language_pair
+    started_at = time.monotonic()
+    first_token_at: float | None = None
+    token_count = 0
+    translated_parts: list[str] = []
+
+    try:
+        provider = provider_factory(settings)
+        translation = provider.translate(
+            text=payload.text, source_lang=source_lang, target_lang=target_lang
+        )
+        try:
+            async for token in translation:
+                if await request.is_disconnected():
+                    return
+                first_token_at = first_token_at or time.monotonic()
+                token_count += 1
+                translated_parts.append(token)
+                yield _sse({"token": token})
+        finally:
+            aclose = getattr(translation, "aclose", None)
+            if aclose is not None:
+                await aclose()
+
+        if await request.is_disconnected():
+            return
+        if settings.save_translations and translated_parts:
+            elapsed = time.monotonic() - started_at
+            try:
+                save_text_translation(
+                    input_text=payload.text,
+                    output_text="".join(translated_parts),
+                    source_lang=payload.source_lang,
+                    target_lang=payload.target_lang,
+                    metrics={
+                        "token_count": token_count,
+                        "time_to_first_token": round(
+                            (first_token_at or started_at) - started_at, 3
+                        ),
+                        "total_time": round(elapsed, 3),
+                        "tokens_per_sec": round(token_count / elapsed, 2) if elapsed else 0,
+                    },
+                )
+            except OSError:
+                logger.exception("Failed to save a translation history record")
+        yield _sse({"done": True})
+    except asyncio.CancelledError:
+        return
+    except TranslationProviderError as error:
+        yield _sse({"error": str(error)})
+    except Exception:
+        logger.exception("Unexpected translation request failure")
+        yield _sse({"error": "Translation failed unexpectedly."})
+
+
 def create_app(
     settings: Settings | None = None,
     provider_factory: Callable[[Settings], TranslationProvider] | None = None,
@@ -70,70 +144,25 @@ def create_app(
     app.state.settings = settings or Settings.from_environment()
     app.state.provider_factory = provider_factory or OpenAICompatibleProvider
 
+    @app.get("/", include_in_schema=False)
+    async def index() -> FileResponse:
+        return FileResponse(INDEX_FILE)
+
     @app.get("/health")
     async def health() -> JSONResponse:
         return JSONResponse({"status": "ok"})
 
     @app.post("/api/translate-text")
     async def translate_text(payload: TranslateRequest, request: Request) -> StreamingResponse:
-        async def events() -> AsyncIterator[str]:
-            if not payload.text:
-                yield _sse({"error": "text must not be empty."})
-                return
-            language_pair = _validate_language_pair(payload.source_lang, payload.target_lang)
-            if isinstance(language_pair, str):
-                yield _sse({"error": language_pair})
-                return
-
-            source_lang, target_lang = language_pair
-            started_at = time.monotonic()
-            first_token_at: float | None = None
-            token_count = 0
-            translated_parts: list[str] = []
-
-            try:
-                provider = request.app.state.provider_factory(request.app.state.settings)
-                async for token in provider.translate(
-                    text=payload.text, source_lang=source_lang, target_lang=target_lang
-                ):
-                    if await request.is_disconnected():
-                        return
-                    first_token_at = first_token_at or time.monotonic()
-                    token_count += 1
-                    translated_parts.append(token)
-                    yield _sse({"token": token})
-
-                if await request.is_disconnected():
-                    return
-                if request.app.state.settings.save_translations and translated_parts:
-                    elapsed = time.monotonic() - started_at
-                    try:
-                        save_text_translation(
-                            input_text=payload.text,
-                            output_text="".join(translated_parts),
-                            source_lang=payload.source_lang,
-                            target_lang=payload.target_lang,
-                            metrics={
-                                "token_count": token_count,
-                                "time_to_first_token": round(
-                                    (first_token_at or started_at) - started_at, 3
-                                ),
-                                "total_time": round(elapsed, 3),
-                                "tokens_per_sec": round(token_count / elapsed, 2) if elapsed else 0,
-                            },
-                        )
-                    except OSError:
-                        logger.exception("Failed to save a translation history record")
-                yield _sse({"done": True})
-            except asyncio.CancelledError:
-                return
-            except TranslationProviderError as error:
-                yield _sse({"error": str(error)})
-            except Exception:
-                logger.exception("Unexpected translation request failure")
-                yield _sse({"error": "Translation failed unexpectedly."})
-
-        return StreamingResponse(events(), media_type="text/event-stream")
+        return StreamingResponse(
+            stream_translation_events(
+                payload=payload,
+                request=request,
+                settings=request.app.state.settings,
+                provider_factory=request.app.state.provider_factory,
+            ),
+            media_type="text/event-stream",
+        )
 
     return app
 

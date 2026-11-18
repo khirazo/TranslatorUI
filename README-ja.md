@@ -54,12 +54,11 @@ PLaMo翻訳モデルは長文翻訳に対応していますが、ほとんどの
 sudo docker-compose up -d
 ```
 
-### Python テキスト翻訳 API の並行検証
+### FastAPI テキスト翻訳 UI
 
-PDF API と既存 Ruby UI を変更せずに、PLaMo 3 Translate 用のテキスト翻訳 API をポート 4568
-で検証できます。リポジトリー直下に `.env.template` をコピーして `.env` を作成し、LM Studio
-が公開している実際のモデル ID と接続先を設定してください。`LLM_ENDPOINT` は `/v1` を含めない
-ルート URL です。
+FastAPI サービスは、TranslatorUI のテキスト翻訳 UI と API をポート 4568 で配信します。
+リポジトリー直下に `.env.template` をコピーして `.env` を作成し、LM Studio が公開している実際の
+モデル ID と接続先を設定してください。`LLM_ENDPOINT` は `/v1` を含めないルート URL です。
 
 macOS / Linux / WSL では、リポジトリー直下から次のラッパーを実行してください。
 既存の `.venv` を利用し、存在しない場合は Python 3.12 以上（より新しい版を含む）で作成し、
@@ -111,11 +110,15 @@ PowerShell では次を実行します。
 Invoke-RestMethod http://localhost:4568/health
 ```
 
-`{"status":"ok"}` が返れば、Python API は起動しています。
+`{"status":"ok"}` が返れば、Python API は起動しています。ブラウザーで
+`http://localhost:4568/` を開くと FastAPI が配信する UI を使用できます。テキスト翻訳は同一
+オリジンの `/api/translate-text` を呼び出し、SSE で結果を順次表示します。
 
 この段階では `SAVE_TRANSLATIONS=false` のままにしてください。Ruby と Python が同じ
-`localingo/data/translations.json` を同時に更新しないためです。Python MVP は `auto` と
-`ja-easy` をまだ受け付けません。
+`localingo/data/translations.json` を同時に更新しないためです。Python UI は明示的な言語ペアのみ
+対応しており、`auto` と `ja-easy` は使用できません。PDF 翻訳は Python 側への移行中のため、
+FastAPI 配信 UI では現在利用できません。移行期間中、ポート 4567 の Ruby アプリケーションは
+レガシー UI / PDF 検証用としてのみ残ります。
 
 ### Cloudflare Tunnelを用いて外部公開する場合
 

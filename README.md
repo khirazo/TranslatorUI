@@ -53,11 +53,11 @@ While the PLaMo translation model supports long-form translations, most LLM serv
 ```bash
 sudo docker-compose up -d
 ```
-
+### FastAPI text-translation UI
 ### Parallel verification of the Python text-translation API
-
-The PLaMo 3 Translate text API can be verified on port 4568 without changing the PDF API or
-existing Ruby UI. Copy `.env.template` to `.env`, then set the actual model ID and endpoint exposed
+The FastAPI service hosts the TranslatorUI text-translation UI and API on port 4568. Copy
+`.env.template` to `.env`, then set the actual model ID and endpoint exposed by LM Studio.
+`LLM_ENDPOINT` is the root URL without `/v1`.
 by LM Studio. `LLM_ENDPOINT` must be the root URL without `/v1`.
 
 On macOS, Linux, or WSL, run the wrapper from the repository root. It uses an existing `.venv`, or
@@ -109,10 +109,15 @@ On PowerShell, use:
 Invoke-RestMethod http://localhost:4568/health
 ```
 
-The expected response is `{"status":"ok"}`.
+The expected response is `{"status":"ok"}`. Open `http://localhost:4568/` in a browser to use
+the FastAPI-hosted UI. Its text translation requests use the same-origin
+`/api/translate-text` endpoint and stream results with SSE.
 
 Keep `SAVE_TRANSLATIONS=false` during this stage so Ruby and Python do not concurrently update
-`localingo/data/translations.json`. The Python MVP does not yet accept `auto` or `ja-easy`.
+`localingo/data/translations.json`. The Python UI currently supports explicit language pairs only;
+automatic detection and easy Japanese are unavailable. PDF translation is also unavailable in the
+FastAPI-hosted UI while its Python-side migration is in progress. The Ruby application on port 4567
+remains available only for legacy/PDF verification during this transition.
 
 ### Exposing the Service via Cloudflare Tunnel
 

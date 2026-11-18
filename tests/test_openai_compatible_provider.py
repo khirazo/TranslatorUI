@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import AsyncIterator
 
@@ -19,6 +20,20 @@ class ChunkStream(httpx.AsyncByteStream):
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+class BlockingStream(httpx.AsyncByteStream):
+    def __init__(self) -> None:
+        self.closed = False
+        self._release = asyncio.Event()
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield b'data: {"choices":[{"delta":{"content":"first"}}]}\n\n'
+        await self._release.wait()
+
+    async def aclose(self) -> None:
+        self.closed = True
+        self._release.set()
 
 
 def provider_for(handler: httpx.MockTransport) -> OpenAICompatibleProvider:
@@ -118,6 +133,22 @@ async def test_provider_uses_configured_chat_endpoint() -> None:
 
     assert tokens == []
     assert received_url == "http://provider.test/custom/openai/chat"
+
+
+@pytest.mark.asyncio
+async def test_closing_provider_generator_closes_upstream_stream() -> None:
+    stream = BlockingStream()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=stream)
+
+    provider = provider_for(httpx.MockTransport(handler))
+    translation = provider.translate(text="hello", source_lang="en", target_lang="ja")
+
+    assert await anext(translation) == "first"
+    await translation.aclose()
+
+    assert stream.closed is True
 
 
 @pytest.mark.asyncio

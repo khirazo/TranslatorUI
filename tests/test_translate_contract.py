@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 
 from app.config import Settings
-from app.main import create_app
+from app.main import TranslateRequest, create_app, stream_translation_events
 from app.providers.base import TranslationProviderError
 from fastapi.testclient import TestClient
 
@@ -22,6 +22,15 @@ class FailingProvider:
     ) -> AsyncIterator[str]:
         raise TranslationProviderError("Could not connect to the translation provider.")
         yield ""  # pragma: no cover
+
+
+class DisconnectingRequest:
+    def __init__(self) -> None:
+        self._checks = 0
+
+    async def is_disconnected(self) -> bool:
+        self._checks += 1
+        return self._checks > 1
 
 
 def make_client(provider_factory: object) -> TestClient:
@@ -83,3 +92,32 @@ def test_translate_emits_one_error_for_provider_failure() -> None:
         )
 
     assert response.text == ('data: {"error":"Could not connect to the translation provider."}\n\n')
+
+
+async def test_disconnect_closes_provider_without_done_or_error() -> None:
+    provider_closed = False
+
+    class DelayedProvider:
+        async def translate(
+            self, *, text: str, source_lang: str, target_lang: str
+        ) -> AsyncIterator[str]:
+            nonlocal provider_closed
+            try:
+                yield "first"
+                yield "second"
+            finally:
+                provider_closed = True
+
+    events = [
+        event
+        async for event in stream_translation_events(
+            payload=TranslateRequest(text="hello", source_lang="en", target_lang="ja"),
+            request=DisconnectingRequest(),  # type: ignore[arg-type]
+            settings=Settings(),
+            provider_factory=lambda settings: DelayedProvider(),
+        )
+    ]
+
+    assert events == ['data: {"token":"first"}\n\n']
+    assert provider_closed is True
+    assert not any('"done"' in event or '"error"' in event for event in events)
