@@ -28,6 +28,20 @@ def provider_for(handler: httpx.MockTransport) -> OpenAICompatibleProvider:
     )
 
 
+def test_settings_resolve_default_relative_and_explicit_api_endpoints() -> None:
+    settings = Settings(llm_endpoint="http://provider.test/root/")
+    assert settings.model_url == "http://provider.test/v1/models"
+    assert settings.chat_url == "http://provider.test/v1/chat/completions"
+
+    custom = Settings(
+        llm_endpoint="http://provider.test/base",
+        llm_model_endpoint="/catalog/models",
+        llm_chat_endpoint="https://chat.provider.test/generate",
+    )
+    assert custom.model_url == "http://provider.test/catalog/models"
+    assert custom.chat_url == "https://chat.provider.test/generate"
+
+
 @pytest.mark.asyncio
 async def test_provider_parses_events_split_at_arbitrary_byte_boundaries() -> None:
     upstream = (
@@ -78,6 +92,32 @@ async def test_provider_stops_on_finish_reason_and_sends_plamo_three_payload() -
         "chat_template_kwargs": {"source_lang": "ja", "target_lang": "en"},
         "stop": PLAMO_STOP_TOKENS,
     }
+
+
+@pytest.mark.asyncio
+async def test_provider_uses_configured_chat_endpoint() -> None:
+    received_url: str | None = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal received_url
+        received_url = str(request.url)
+        return httpx.Response(200, content=b"data: [DONE]\n\n")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = OpenAICompatibleProvider(
+        Settings(
+            llm_endpoint="http://provider.test",
+            llm_chat_endpoint="/custom/openai/chat",
+        ),
+        client,
+    )
+    tokens = [
+        token
+        async for token in provider.translate(text="hello", source_lang="en", target_lang="ja")
+    ]
+
+    assert tokens == []
+    assert received_url == "http://provider.test/custom/openai/chat"
 
 
 @pytest.mark.asyncio

@@ -60,7 +60,7 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 venv_path="$repository_root/.venv"
 venv_python="$venv_path/bin/python"
 requirements_path="$repository_root/translator_ui/requirements.txt"
-env_example_path="$repository_root/.env.example"
+env_template_path="$repository_root/.env.template"
 env_path="$repository_root/.env"
 
 get_python_version() {
@@ -133,13 +133,13 @@ if [ "$install_dependencies" = true ] || ! "$python" -c 'import fastapi, httpx, 
 fi
 
 if [ ! -f "$env_path" ]; then
-    if [ ! -f "$env_example_path" ]; then
-        echo "Environment example file was not found: $env_example_path" >&2
+    if [ ! -f "$env_template_path" ]; then
+        echo "Environment template file was not found: $env_template_path" >&2
         exit 1
     fi
-    echo "Creating $env_path from .env.example for local Uvicorn execution."
+    echo "Creating $env_path from .env.template for local Uvicorn execution."
     sed 's|^LLM_ENDPOINT=http://host\.docker\.internal:1234$|LLM_ENDPOINT=http://localhost:1234|' \
-        "$env_example_path" > "$env_path"
+        "$env_template_path" > "$env_path"
     echo "Warning: review $env_path and set LLM_MODEL to the model ID published by your LLM server." >&2
 fi
 

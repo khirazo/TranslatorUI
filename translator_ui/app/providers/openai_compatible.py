@@ -51,7 +51,7 @@ class OpenAICompatibleProvider:
         try:
             async with client.stream(
                 "POST",
-                f"{self._settings.llm_endpoint}/v1/chat/completions",
+                self._settings.chat_url,
                 headers=self._headers(),
                 json=self._request_payload(
                     text=text, source_lang=source_lang, target_lang=target_lang

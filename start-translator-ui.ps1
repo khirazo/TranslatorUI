@@ -17,7 +17,7 @@ $repositoryRoot = $PSScriptRoot
 $venvPath = Join-Path $repositoryRoot ".venv"
 $venvPython = Join-Path $venvPath "Scripts\python.exe"
 $requirementsPath = Join-Path $repositoryRoot "translator_ui\requirements.txt"
-$envExamplePath = Join-Path $repositoryRoot ".env.example"
+$envTemplatePath = Join-Path $repositoryRoot ".env.template"
 $envPath = Join-Path $repositoryRoot ".env"
 $minimumPythonVersion = [Version]"3.12"
 
@@ -116,11 +116,11 @@ if ($InstallDependencies -or -not $dependenciesAvailable) {
 }
 
 if (-not (Test-Path $envPath)) {
-    if (-not (Test-Path $envExamplePath)) {
-        throw "Environment example file was not found: $envExamplePath"
+    if (-not (Test-Path $envTemplatePath)) {
+        throw "Environment template file was not found: $envTemplatePath"
     }
-    Write-Host "Creating $envPath from .env.example for local Uvicorn execution."
-    $envContents = Get-Content -LiteralPath $envExamplePath -Raw
+    Write-Host "Creating $envPath from .env.template for local Uvicorn execution."
+    $envContents = Get-Content -LiteralPath $envTemplatePath -Raw
     $envContents = $envContents.Replace(
         "LLM_ENDPOINT=http://host.docker.internal:1234",
         "LLM_ENDPOINT=http://localhost:1234"

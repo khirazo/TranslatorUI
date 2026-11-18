@@ -57,7 +57,7 @@ sudo docker-compose up -d
 ### Parallel verification of the Python text-translation API
 
 The PLaMo 3 Translate text API can be verified on port 4568 without changing the PDF API or
-existing Ruby UI. Copy `.env.example` to `.env`, then set the actual model ID and endpoint exposed
+existing Ruby UI. Copy `.env.template` to `.env`, then set the actual model ID and endpoint exposed
 by LM Studio. `LLM_ENDPOINT` must be the root URL without `/v1`.
 
 On macOS, Linux, or WSL, run the wrapper from the repository root. It uses an existing `.venv`, or
@@ -89,8 +89,13 @@ On PowerShell:
 
 Use `--install-dependencies` / `-InstallDependencies` to explicitly refresh dependencies, or
 `--recreate-venv` / `-RecreateVenv` to recreate an existing virtual environment. If `.env` does not
-exist, either wrapper creates one from `.env.example` with `LLM_ENDPOINT=http://localhost:1234` for
+exist, either wrapper creates one from `.env.template` with `LLM_ENDPOINT=http://localhost:1234` for
 direct host execution. Then confirm the actual model ID published by LM Studio.
+
+`LLM_MODEL_ENDPOINT` and `LLM_CHAT_ENDPOINT` configure the model-list and Chat Completions API
+paths independently. Standard OpenAI-compatible servers use the defaults `/v1/models` and
+`/v1/chat/completions`. Each setting accepts either an absolute path on `LLM_ENDPOINT` or a complete
+`https://...` URL, supporting non-standard paths and OpenAI-compatible endpoints on separate hosts.
 
 After starting the service, check its health from another macOS, Linux, or WSL terminal:
 

@@ -57,7 +57,7 @@ sudo docker-compose up -d
 ### Python テキスト翻訳 API の並行検証
 
 PDF API と既存 Ruby UI を変更せずに、PLaMo 3 Translate 用のテキスト翻訳 API をポート 4568
-で検証できます。リポジトリー直下に `.env.example` をコピーして `.env` を作成し、LM Studio
+で検証できます。リポジトリー直下に `.env.template` をコピーして `.env` を作成し、LM Studio
 が公開している実際のモデル ID と接続先を設定してください。`LLM_ENDPOINT` は `/v1` を含めない
 ルート URL です。
 
@@ -90,9 +90,14 @@ PowerShell では次のように指定します。
 
 依存関係を明示的に更新するには、Bash では `--install-dependencies`、PowerShell では
 `-InstallDependencies` を指定します。仮想環境を作り直すには、Bash では `--recreate-venv`、
-PowerShell では `-RecreateVenv` を指定します。`.env` がない場合は、ラッパーが `.env.example` を基に
+PowerShell では `-RecreateVenv` を指定します。`.env` がない場合は、ラッパーが `.env.template` を基に
 ホスト直接実行用の `LLM_ENDPOINT=http://localhost:1234` を設定した `.env` を作成します。
 作成後は LM Studio が公開している実際のモデル ID を確認してください。
+
+`LLM_MODEL_ENDPOINT` と `LLM_CHAT_ENDPOINT` は、モデル一覧と Chat Completions の API パスを
+個別に指定します。標準的な OpenAI 互換サーバーでは既定値の `/v1/models` と
+`/v1/chat/completions` を使います。ベースURLからの絶対パスのほか、`https://...` の完全URLも
+設定できるため、非標準のパス・別ホストにある OpenAI 互換エンドポイントにも対応できます。
 
 起動後は、macOS / Linux / WSL では別の端末から次のヘルスチェックを実行できます。
 
