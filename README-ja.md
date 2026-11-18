@@ -60,6 +60,16 @@ FastAPI サービスは、TranslatorUI のテキスト翻訳 UI と API をポ�
 リポジトリー直下に `.env.template` をコピーして `.env` を作成し、LM Studio が公開している実際の
 モデル ID と接続先を設定してください。`LLM_ENDPOINT` は `/v1` を含めないルート URL です。
 
+従来の Ruby / PDF サービスと並行して Compose で起動する場合も、同じ `.env` を使います。
+
+```bash
+docker compose up -d translator-ui
+```
+
+移行中は `127.0.0.1:4568` にのみ公開します。コンテナー内の既定値
+`LLM_ENDPOINT=http://host.docker.internal:1234` は、ホストで動作する LM Studio に接続します。
+PDF の経路を FastAPI に移すまでは、従来の Ruby アプリケーションをポート 4567 で残します。
+
 macOS / Linux / WSL では、リポジトリー直下から次のラッパーを実行してください。
 既存の `.venv` を利用し、存在しない場合は Python 3.12 以上（より新しい版を含む）で作成し、
 不足している依存関係を導入してから API を起動します。仮想環境の有効化は不要です。

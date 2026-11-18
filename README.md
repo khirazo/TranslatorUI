@@ -58,7 +58,16 @@ sudo docker-compose up -d
 The FastAPI service hosts the TranslatorUI text-translation UI and API on port 4568. Copy
 `.env.template` to `.env`, then set the actual model ID and endpoint exposed by LM Studio.
 `LLM_ENDPOINT` is the root URL without `/v1`.
-by LM Studio. `LLM_ENDPOINT` must be the root URL without `/v1`.
+
+To run the service in Compose alongside the legacy Ruby and PDF services, use the same `.env` file:
+
+```bash
+docker compose up -d translator-ui
+```
+
+It is published only at `127.0.0.1:4568` during migration. In the container, the default
+`LLM_ENDPOINT=http://host.docker.internal:1234` reaches an LM Studio server running on the host.
+The legacy Ruby application remains on port 4567 until PDF routing moves to FastAPI.
 
 On macOS, Linux, or WSL, run the wrapper from the repository root. It uses an existing `.venv`, or
 creates one with Python 3.12 or newer, installs missing dependencies, and starts the API without
