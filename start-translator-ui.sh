@@ -4,8 +4,6 @@ set -euo pipefail
 
 listen_host="127.0.0.1"
 port="4568"
-install_dependencies=false
-recreate_venv=false
 minimum_python_version="3.12"
 
 usage() {
@@ -15,8 +13,6 @@ Usage: ./start-translator-ui.sh [options]
 Options:
   --listen-host HOST       Address to bind (default: 127.0.0.1)
   --port PORT              Port to bind (default: 4568)
-  --install-dependencies   Reinstall requirements.txt dependencies
-  --recreate-venv          Delete and recreate .venv
   -h, --help               Show this help message
 EOF
 }
@@ -30,14 +26,6 @@ while [ "$#" -gt 0 ]; do
         --port)
             port="$2"
             shift 2
-            ;;
-        --install-dependencies)
-            install_dependencies=true
-            shift
-            ;;
-        --recreate-venv)
-            recreate_venv=true
-            shift
             ;;
         -h|--help)
             usage
@@ -56,10 +44,9 @@ if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; th
     exit 2
 fi
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repository_root="$(cd "$(dirname "$0")" && pwd)"
 venv_path="$repository_root/.venv"
 venv_python="$venv_path/bin/python"
-requirements_path="$repository_root/translator_ui/requirements.txt"
 env_template_path="$repository_root/.env.template"
 env_path="$repository_root/.env"
 
@@ -76,61 +63,11 @@ assert_supported_python() {
         echo "Unable to determine the Python version for $description." >&2
         exit 1
     fi
-
-    if ! "$executable" -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)"; then
+    if ! "$executable" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'; then
         echo "$description uses Python $version. TranslatorUI requires Python $minimum_python_version or newer." >&2
         exit 1
     fi
 }
-
-if [ "$recreate_venv" = true ] && [ -e "$venv_path" ]; then
-    echo "Removing the existing virtual environment: $venv_path"
-    rm -rf "$venv_path"
-fi
-
-if [ -x "$venv_python" ]; then
-    assert_supported_python "$venv_python" "The existing virtual environment"
-    python="$venv_python"
-elif [ -e "$venv_path" ]; then
-    echo "The existing .venv is not a usable Unix virtual environment. Use --recreate-venv to recreate it." >&2
-    exit 1
-else
-    python_command=""
-    for candidate in python3 python; do
-        if command -v "$candidate" >/dev/null 2>&1; then
-            if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'; then
-                python_command="$candidate"
-                break
-            fi
-        fi
-    done
-
-    if [ -z "$python_command" ]; then
-        echo "Python $minimum_python_version or newer was not found. Install Python, then run this script again." >&2
-        exit 1
-    fi
-
-    version="$(get_python_version "$python_command")"
-    echo "Creating virtual environment with Python $version: $venv_path"
-    "$python_command" -m venv "$venv_path"
-    if [ ! -x "$venv_python" ]; then
-        echo "Failed to create the virtual environment at $venv_path." >&2
-        exit 1
-    fi
-    python="$venv_python"
-    install_dependencies=true
-fi
-
-if [ ! -f "$requirements_path" ]; then
-    echo "Requirements file was not found: $requirements_path" >&2
-    exit 1
-fi
-
-if [ "$install_dependencies" = true ] || ! "$python" -c 'import fastapi, httpx, pydantic, dotenv, uvicorn' >/dev/null 2>&1; then
-    echo "Installing TranslatorUI dependencies..."
-    "$python" -m pip install --upgrade pip
-    "$python" -m pip install -r "$requirements_path"
-fi
 
 if [ ! -f "$env_path" ]; then
     if [ ! -f "$env_template_path" ]; then
@@ -138,11 +75,38 @@ if [ ! -f "$env_path" ]; then
         exit 1
     fi
     echo "Creating $env_path from .env.template for local Uvicorn execution."
-    sed 's|^LLM_ENDPOINT=http://host\.docker\.internal:1234$|LLM_ENDPOINT=http://localhost:1234|' \
-        "$env_template_path" > "$env_path"
+    sed 's|^LLM_ENDPOINT=http://host\.docker\.internal:1234$|LLM_ENDPOINT=http://localhost:1234|' "$env_template_path" > "$env_path"
     echo "Warning: review $env_path and set LLM_MODEL to the model ID published by your LLM server." >&2
 fi
 
-export PYTHONPATH="$repository_root/translator_ui${PYTHONPATH:+:$PYTHONPATH}"
-echo "Starting TranslatorUI at http://${listen_host}:$port"
-exec "$python" -m uvicorn app.main:app --host "$listen_host" --port "$port"
+echo "Starting TranslatorUI at http://$listen_host:$port"
+if command -v uv >/dev/null 2>&1; then
+    exec uv run --locked -- python -m uvicorn app.main:app --app-dir translator_ui --host "$listen_host" --port "$port"
+fi
+
+if [ -x "$venv_python" ]; then
+    assert_supported_python "$venv_python" "The existing virtual environment"
+    python="$venv_python"
+elif [ -e "$venv_path" ]; then
+    echo "The existing .venv is not a usable Unix virtual environment. Install uv or recreate .venv yourself." >&2
+    exit 1
+else
+    python=""
+    for candidate in python3 python; do
+        if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'; then
+            python="$candidate"
+            break
+        fi
+    done
+    if [ -z "$python" ]; then
+        echo "Python $minimum_python_version or newer was not found. Install uv or Python, then run this script again." >&2
+        exit 1
+    fi
+fi
+
+if ! "$python" -c 'import fastapi, httpx, pydantic, dotenv, uvicorn' >/dev/null 2>&1; then
+    echo "TranslatorUI dependencies are unavailable. Install uv (recommended), or create .venv and run '$python -m pip install -r translator_ui/requirements.txt'." >&2
+    exit 1
+fi
+
+exec "$python" -m uvicorn app.main:app --app-dir translator_ui --host "$listen_host" --port "$port"

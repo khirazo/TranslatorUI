@@ -70,9 +70,9 @@ docker compose up -d translator-ui
 `LLM_ENDPOINT=http://host.docker.internal:1234` は、ホストで動作する LM Studio に接続します。
 PDF の経路を FastAPI に移すまでは、従来の Ruby アプリケーションをポート 4567 で残します。
 
-macOS / Linux / WSL では、リポジトリー直下から次のラッパーを実行してください。
-既存の `.venv` を利用し、存在しない場合は Python 3.12 以上（より新しい版を含む）で作成し、
-不足している依存関係を導入してから API を起動します。仮想環境の有効化は不要です。
+通常のローカル利用では、[uv](https://docs.astral.sh/uv/) を導入し、リポジトリー直下から次の
+ラッパーを実行してください。ラッパーはコミット済みの `uv.lock` に基づく `uv run --locked` を
+使用するため、仮想環境を手作業で有効化・管理する必要はありません。
 
 ```bash
 ./start-translator-ui.sh
@@ -97,11 +97,23 @@ PowerShell では次のように指定します。
 .\start-translator-ui.ps1 -ListenHost 0.0.0.0 -Port 4568
 ```
 
-依存関係を明示的に更新するには、Bash では `--install-dependencies`、PowerShell では
-`-InstallDependencies` を指定します。仮想環境を作り直すには、Bash では `--recreate-venv`、
-PowerShell では `-RecreateVenv` を指定します。`.env` がない場合は、ラッパーが `.env.template` を基に
-ホスト直接実行用の `LLM_ENDPOINT=http://localhost:1234` を設定した `.env` を作成します。
-作成後は LM Studio が公開している実際のモデル ID を確認してください。
+uv がない場合、ラッパーは現在のプラットフォームで使用できる既存 `.venv` を利用します。`.venv` も
+ない場合は、必要なパッケージがすでに導入された Python 3.12 以上だけで起動を試みます。グローバル
+Python へパッケージを自動導入することはありません。uv を使わない場合は、自分で仮想環境を作り、
+互換用の依存関係を導入してください。
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r translator_ui/requirements.txt
+```
+
+PowerShell では `.venv\Scripts\python -m pip install -r translator_ui\requirements.txt` を実行します。
+`.env` がない場合は、ラッパーが `.env.template` を基にホスト直接実行用の
+`LLM_ENDPOINT=http://localhost:1234` を設定した `.env` を作成します。作成後は LM Studio が公開している
+実際のモデル ID を確認してください。
+
+Docker Compose は再現可能な統合検証と PDF 移行のために利用できますが、テキスト翻訳 UI の通常起動には
+使いません。ローカルで起動したサービスは `Ctrl+C` で終了します。
 
 `LLM_MODEL_ENDPOINT` と `LLM_CHAT_ENDPOINT` は、モデル一覧と Chat Completions の API パスを
 個別に指定します。標準的な OpenAI 互換サーバーでは既定値の `/v1/models` と

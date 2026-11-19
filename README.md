@@ -69,9 +69,9 @@ It is published only at `127.0.0.1:4568` during migration. In the container, the
 `LLM_ENDPOINT=http://host.docker.internal:1234` reaches an LM Studio server running on the host.
 The legacy Ruby application remains on port 4567 until PDF routing moves to FastAPI.
 
-On macOS, Linux, or WSL, run the wrapper from the repository root. It uses an existing `.venv`, or
-creates one with Python 3.12 or newer, installs missing dependencies, and starts the API without
-requiring virtual-environment activation:
+For normal local use, install [uv](https://docs.astral.sh/uv/) and run the wrapper from the
+repository root. The wrapper uses `uv run --locked`, so it creates or reuses the project
+environment from the committed `uv.lock` without requiring virtual-environment activation:
 
 ```bash
 ./start-translator-ui.sh
@@ -96,10 +96,23 @@ On PowerShell:
 .\start-translator-ui.ps1 -ListenHost 0.0.0.0 -Port 4568
 ```
 
-Use `--install-dependencies` / `-InstallDependencies` to explicitly refresh dependencies, or
-`--recreate-venv` / `-RecreateVenv` to recreate an existing virtual environment. If `.env` does not
-exist, either wrapper creates one from `.env.template` with `LLM_ENDPOINT=http://localhost:1234` for
-direct host execution. Then confirm the actual model ID published by LM Studio.
+If uv is unavailable, the wrapper uses an existing platform-compatible `.venv`. If there is no
+`.venv`, it tries a local Python 3.12-or-newer installation only when the required packages are
+already available. It never installs packages into the global Python environment. Non-uv users can
+create their own virtual environment and install the compatibility requirements:
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r translator_ui/requirements.txt
+```
+
+On PowerShell, use `.venv\Scripts\python -m pip install -r translator_ui\requirements.txt`.
+If `.env` does not exist, either wrapper creates one from `.env.template` with
+`LLM_ENDPOINT=http://localhost:1234` for direct host execution. Then confirm the actual model ID
+published by LM Studio.
+
+Docker Compose remains available for reproducible integration testing and the PDF migration, but is
+not the default way to run the text translation UI. Stop a locally started service with `Ctrl+C`.
 
 `LLM_MODEL_ENDPOINT` and `LLM_CHAT_ENDPOINT` configure the model-list and Chat Completions API
 paths independently. Standard OpenAI-compatible servers use the defaults `/v1/models` and
