@@ -56,8 +56,18 @@ sudo docker-compose up -d
 ### FastAPI text-translation UI
 ### Parallel verification of the Python text-translation API
 The FastAPI service hosts the TranslatorUI text-translation UI and API on port 4568. Copy
-`.env.template` to `.env`, then set the actual model ID and endpoint exposed by LM Studio.
-`LLM_ENDPOINT` is the root URL without `/v1`.
+`.env.template` to `.env`. For one legacy PLaMo provider, set the actual model ID and endpoint
+exposed by LM Studio; `LLM_ENDPOINT` is the root URL without `/v1`.
+
+For multiple providers, copy `translator-ui.toml.example` to `translator-ui.toml` and set
+`TRANSLATOR_UI_CONFIG=translator-ui.toml` in `.env`. Each `[[providers]]` entry has a stable `id`
+for API/UI selection and a separate display `name`. Keep API keys in `.env` and use
+`api_key_env = "VARIABLE_NAME"` in TOML; never put secrets in the TOML file. The UI lists enabled
+`openai_compatible` providers and sends the selected ID with each translation request. The
+`plamo3` profile sends PLaMo-specific prompt fields, while `generic` does not.
+
+ACP entries may be registered in TOML now, but they are deliberately not exposed in the UI until
+the ACP adapter and its process-isolation safeguards are implemented.
 
 To run the service in Compose alongside the legacy Ruby and PDF services, use the same `.env` file:
 

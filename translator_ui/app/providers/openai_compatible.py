@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from app.config import Settings
+from app.config import ProviderSettings
 from app.providers.base import TranslationProviderError
 
 PLAMO_STOP_TOKENS = ["<|plamo:tag|>", "<|plamo:bos|>"]
@@ -18,28 +18,30 @@ PLAMO_STOP_TOKENS = ["<|plamo:tag|>", "<|plamo:bos|>"]
 class OpenAICompatibleProvider:
     """Translate via PLaMo 3's OpenAI-compatible Chat Completions interface."""
 
-    def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(self, settings: ProviderSettings, client: httpx.AsyncClient | None = None) -> None:
         self._settings = settings
         self._client = client
 
     def _request_payload(self, *, text: str, source_lang: str, target_lang: str) -> dict[str, Any]:
-        return {
-            "model": self._settings.llm_model,
+        payload: dict[str, Any] = {
+            "model": self._settings.model,
             "messages": [{"role": "user", "content": text}],
             "stream": True,
             "temperature": 0,
-            "max_tokens": self._settings.llm_max_tokens,
-            "chat_template_kwargs": {
+            "max_tokens": self._settings.max_tokens,
+        }
+        if self._settings.translation_profile == "plamo3":
+            payload["chat_template_kwargs"] = {
                 "source_lang": source_lang,
                 "target_lang": target_lang,
-            },
-            "stop": PLAMO_STOP_TOKENS,
-        }
+            }
+            payload["stop"] = PLAMO_STOP_TOKENS
+        return payload
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
-        if self._settings.llm_api_key:
-            headers["Authorization"] = f"Bearer {self._settings.llm_api_key}"
+        if self._settings.api_key:
+            headers["Authorization"] = f"Bearer {self._settings.api_key}"
         return headers
 
     async def translate(

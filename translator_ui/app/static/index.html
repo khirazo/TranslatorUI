@@ -42,6 +42,16 @@
 
       <!-- テキスト翻訳タブ -->
       <div v-show="activeTab === 'text'">
+        <div v-if="providers.length > 1" class="flex justify-center mb-4">
+          <label class="flex items-center gap-2 text-sm text-gray-700">
+            <span class="font-semibold">翻訳プロバイダー</span>
+            <select v-model="providerId" :disabled="isTranslating" class="rounded-md border border-gray-300 bg-white px-3 py-2">
+              <option v-for="provider in providers" :key="provider.id" :value="provider.id">
+                {{ provider.name }}
+              </option>
+            </select>
+          </label>
+        </div>
         <!-- 言語選択UI -->
         <div class="flex justify-center mb-6 gap-3">
           <button
@@ -424,6 +434,8 @@
           sourceLang: 'ja',
           targetLang: 'en',
           showLanguageSelector: false,
+          providers: [],
+          providerId: '',
           
           // 翻訳元言語
           sourceLanguages: [
@@ -494,7 +506,21 @@
           showNotice: false
         }
       },
+      mounted() {
+        this.loadProviders();
+      },
       methods: {
+        async loadProviders() {
+          try {
+            const response = await fetch('/api/providers');
+            if (!response.ok) return;
+            const result = await response.json();
+            this.providers = result.providers || [];
+            this.providerId = result.default_provider_id || '';
+          } catch (error) {
+            console.warn('Could not load translation providers.', error);
+          }
+        },
         // テキスト翻訳メソッド
         swapLanguages() {
           const temp = this.sourceLang;
@@ -541,7 +567,8 @@
               body: JSON.stringify({
                 text: this.inputText,
                 source_lang: this.sourceLang,
-                target_lang: this.targetLang
+                target_lang: this.targetLang,
+                provider_id: this.providerId || undefined
               }),
               signal: this.textController.signal
             });

@@ -1,4 +1,5 @@
 .env
+/translator-ui.toml
 
 # Python virtual environments, bytecode, test caches, and build artifacts.
 /.venv/

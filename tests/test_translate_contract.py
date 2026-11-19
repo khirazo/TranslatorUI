@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 
-from app.config import Settings
+from app.config import ProviderSettings, Settings
 from app.main import TranslateRequest, create_app, stream_translation_events
 from app.providers.base import TranslationProviderError
 from fastapi.testclient import TestClient
@@ -92,6 +92,57 @@ def test_translate_emits_one_error_for_provider_failure() -> None:
         )
 
     assert response.text == ('data: {"error":"Could not connect to the translation provider."}\n\n')
+
+
+def test_translate_selects_the_requested_provider() -> None:
+    received_provider_ids: list[str] = []
+    settings = Settings(
+        default_provider_id="first",
+        providers=(
+            ProviderSettings(id="first", name="First", base_url="http://first.test", model="first"),
+            ProviderSettings(
+                id="second", name="Second", base_url="http://second.test", model="second"
+            ),
+        ),
+    )
+
+    with TestClient(
+        create_app(
+            settings=settings,
+            provider_factory=lambda provider: (
+                received_provider_ids.append(provider.id) or TokenProvider()
+            ),
+        )
+    ) as client:
+        response = client.post(
+            "/api/translate-text",
+            json={
+                "text": "hello",
+                "source_lang": "en",
+                "target_lang": "ja",
+                "provider_id": "second",
+            },
+        )
+
+    assert response.text.endswith('data: {"done":true}\n\n')
+    assert received_provider_ids == ["second"]
+
+
+def test_translate_rejects_unknown_provider() -> None:
+    with make_client(lambda provider: TokenProvider()) as client:
+        response = client.post(
+            "/api/translate-text",
+            json={
+                "text": "hello",
+                "source_lang": "en",
+                "target_lang": "ja",
+                "provider_id": "missing",
+            },
+        )
+
+    assert response.text == (
+        'data: {"error":"The selected translation provider is unavailable."}\n\n'
+    )
 
 
 async def test_disconnect_closes_provider_without_done_or_error() -> None:

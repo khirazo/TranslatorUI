@@ -1,0 +1,37 @@
+# Copy to translator-ui.toml and select it with TRANSLATOR_UI_CONFIG=translator-ui.toml.
+# Keep API keys in .env and reference only their variable names here.
+
+[app]
+default_provider = "plamo-local"
+save_translations = false
+
+[[providers]]
+id = "plamo-local"
+name = "LM Studio / PLaMo 3"
+kind = "openai_compatible"
+enabled = true
+base_url = "http://localhost:1234"
+model = "plamo-3-translate-0.8b"
+max_tokens = 512
+translation_profile = "plamo3"
+
+# A generic OpenAI-compatible service does not receive PLaMo-specific prompt fields.
+[[providers]]
+id = "openai-compatible"
+name = "OpenAI-compatible service"
+kind = "openai_compatible"
+enabled = false
+base_url = "https://api.example.com"
+model = "your-model-id"
+api_key_env = "OPENAI_COMPAT_API_KEY"
+translation_profile = "generic"
+
+# ACP entries are retained as configuration only until the ACP adapter is implemented.
+[[providers]]
+id = "codex-acp"
+name = "Codex ACP"
+kind = "acp"
+enabled = false
+command = ["codex", "acp"]
+timeout_seconds = 180
+mode = "ask"

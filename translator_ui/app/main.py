@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from app.config import Settings
+from app.config import ProviderSettings, Settings
 from app.providers.base import TranslationProvider, TranslationProviderError
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.storage import save_text_translation
@@ -48,6 +48,7 @@ class TranslateRequest(BaseModel):
     text: str
     source_lang: str = "auto"
     target_lang: str = "auto"
+    provider_id: str | None = None
 
 
 def _sse(payload: dict[str, object]) -> str:
@@ -69,7 +70,7 @@ async def stream_translation_events(
     payload: TranslateRequest,
     request: Request,
     settings: Settings,
-    provider_factory: Callable[[Settings], TranslationProvider],
+    provider_factory: Callable[[ProviderSettings], TranslationProvider],
 ) -> AsyncIterator[str]:
     """Produce client-facing SSE events and stop the provider on browser disconnect."""
     if not payload.text:
@@ -81,13 +82,17 @@ async def stream_translation_events(
         return
 
     source_lang, target_lang = language_pair
+    provider_settings = settings.provider_for(payload.provider_id)
+    if provider_settings is None:
+        yield _sse({"error": "The selected translation provider is unavailable."})
+        return
     started_at = time.monotonic()
     first_token_at: float | None = None
     token_count = 0
     translated_parts: list[str] = []
 
     try:
-        provider = provider_factory(settings)
+        provider = provider_factory(provider_settings)
         translation = provider.translate(
             text=payload.text, source_lang=source_lang, target_lang=target_lang
         )
@@ -137,7 +142,7 @@ async def stream_translation_events(
 
 def create_app(
     settings: Settings | None = None,
-    provider_factory: Callable[[Settings], TranslationProvider] | None = None,
+    provider_factory: Callable[[ProviderSettings], TranslationProvider] | None = None,
 ) -> FastAPI:
     """Create an application, allowing tests to substitute its provider boundary."""
     app = FastAPI()
@@ -151,6 +156,19 @@ def create_app(
     @app.get("/health")
     async def health() -> JSONResponse:
         return JSONResponse({"status": "ok"})
+
+    @app.get("/api/providers")
+    async def providers() -> JSONResponse:
+        configured_settings: Settings = app.state.settings
+        return JSONResponse(
+            {
+                "default_provider_id": configured_settings.default_provider_id,
+                "providers": [
+                    {"id": provider.id, "name": provider.name}
+                    for provider in configured_settings.selectable_providers
+                ],
+            }
+        )
 
     @app.post("/api/translate-text")
     async def translate_text(payload: TranslateRequest, request: Request) -> StreamingResponse:

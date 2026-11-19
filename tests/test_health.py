@@ -1,4 +1,4 @@
-from app.config import Settings
+from app.config import ProviderSettings, Settings
 from app.main import create_app
 from fastapi.testclient import TestClient
 
@@ -29,3 +29,30 @@ def test_root_serves_the_python_ui() -> None:
     assert "isAutoMode" not in response.text
     assert "setAutoMode" not in response.text
     assert "@click=\"activeTab = 'pdf'\"" not in response.text
+    assert "provider_id: this.providerId || undefined" in response.text
+
+
+def test_providers_lists_only_enabled_openai_compatible_entries() -> None:
+    settings = Settings(
+        default_provider_id="second",
+        providers=(
+            ProviderSettings(
+                id="first", name="First", base_url="http://first.test", model="first-model"
+            ),
+            ProviderSettings(
+                id="second", name="Second", base_url="http://second.test", model="second-model"
+            ),
+            ProviderSettings(
+                id="future", name="Future", kind="acp", enabled=True, command=("agent", "acp")
+            ),
+        ),
+    )
+    app = create_app(settings=settings)
+
+    with TestClient(app) as client:
+        response = client.get("/api/providers")
+
+    assert response.json() == {
+        "default_provider_id": "second",
+        "providers": [{"id": "first", "name": "First"}, {"id": "second", "name": "Second"}],
+    }

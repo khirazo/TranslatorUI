@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 import pytest
-from app.config import Settings
+from app.config import ProviderSettings
 from app.providers.base import TranslationProviderError
 from app.providers.openai_compatible import PLAMO_STOP_TOKENS, OpenAICompatibleProvider
 
@@ -36,22 +36,32 @@ class BlockingStream(httpx.AsyncByteStream):
         self._release.set()
 
 
+def provider_settings(**overrides: object) -> ProviderSettings:
+    values: dict[str, object] = {
+        "id": "test",
+        "name": "Test provider",
+        "base_url": "http://llm.test",
+        "model": "plamo-3-translate-0.8b",
+        "api_key": "secret-key",
+    }
+    values.update(overrides)
+    return ProviderSettings(**values)
+
+
 def provider_for(handler: httpx.MockTransport) -> OpenAICompatibleProvider:
     client = httpx.AsyncClient(transport=handler)
-    return OpenAICompatibleProvider(
-        Settings(llm_endpoint="http://llm.test", llm_api_key="secret-key"), client
-    )
+    return OpenAICompatibleProvider(provider_settings(), client)
 
 
-def test_settings_resolve_default_relative_and_explicit_api_endpoints() -> None:
-    settings = Settings(llm_endpoint="http://provider.test/root/")
+def test_provider_settings_resolve_default_relative_and_explicit_api_endpoints() -> None:
+    settings = provider_settings(base_url="http://provider.test/root/")
     assert settings.model_url == "http://provider.test/v1/models"
     assert settings.chat_url == "http://provider.test/v1/chat/completions"
 
-    custom = Settings(
-        llm_endpoint="http://provider.test/base",
-        llm_model_endpoint="/catalog/models",
-        llm_chat_endpoint="https://chat.provider.test/generate",
+    custom = provider_settings(
+        base_url="http://provider.test/base",
+        model_endpoint="/catalog/models",
+        chat_endpoint="https://chat.provider.test/generate",
     )
     assert custom.model_url == "http://provider.test/catalog/models"
     assert custom.chat_url == "https://chat.provider.test/generate"
@@ -109,6 +119,22 @@ async def test_provider_stops_on_finish_reason_and_sends_plamo_three_payload() -
     }
 
 
+def test_generic_profile_omits_plamo_specific_prompt_fields() -> None:
+    provider = OpenAICompatibleProvider(
+        provider_settings(translation_profile="generic", model="generic-model")
+    )
+
+    payload = provider._request_payload(text="hello", source_lang="en", target_lang="ja")
+
+    assert payload == {
+        "model": "generic-model",
+        "messages": [{"role": "user", "content": "hello"}],
+        "stream": True,
+        "temperature": 0,
+        "max_tokens": 512,
+    }
+
+
 @pytest.mark.asyncio
 async def test_provider_uses_configured_chat_endpoint() -> None:
     received_url: str | None = None
@@ -120,10 +146,7 @@ async def test_provider_uses_configured_chat_endpoint() -> None:
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     provider = OpenAICompatibleProvider(
-        Settings(
-            llm_endpoint="http://provider.test",
-            llm_chat_endpoint="/custom/openai/chat",
-        ),
+        provider_settings(base_url="http://provider.test", chat_endpoint="/custom/openai/chat"),
         client,
     )
     tokens = [

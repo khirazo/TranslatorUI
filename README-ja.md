@@ -57,8 +57,19 @@ sudo docker-compose up -d
 ### FastAPI テキスト翻訳 UI
 
 FastAPI サービスは、TranslatorUI のテキスト翻訳 UI と API をポート 4568 で配信します。
-リポジトリー直下に `.env.template` をコピーして `.env` を作成し、LM Studio が公開している実際の
-モデル ID と接続先を設定してください。`LLM_ENDPOINT` は `/v1` を含めないルート URL です。
+リポジトリー直下に `.env.template` をコピーして `.env` を作成します。PLaMo プロバイダーを一つだけ
+使う従来設定では、LM Studio が公開している実際のモデル ID と接続先を設定してください。
+`LLM_ENDPOINT` は `/v1` を含めないルート URL です。
+
+複数プロバイダーを使う場合は、`translator-ui.toml.example` を `translator-ui.toml` にコピーし、
+`.env` で `TRANSLATOR_UI_CONFIG=translator-ui.toml` を設定します。各 `[[providers]]` は API/UI の
+選択に使う固定 `id` と、表示用の `name` を持ちます。API キーは `.env` に置き、TOML には
+`api_key_env = "VARIABLE_NAME"` と環境変数名だけを記載してください。UI には有効な
+`openai_compatible` プロバイダーを表示し、翻訳要求ごとに選択した ID を送信します。`plamo3`
+プロファイルだけが PLaMo 固有のプロンプト項目を送り、`generic` は送信しません。
+
+ACP のエントリーは TOML に登録できますが、ACP アダプターとプロセス隔離の安全対策を実装するまで、
+意図的に UI の選択肢へは表示しません。
 
 従来の Ruby / PDF サービスと並行して Compose で起動する場合も、同じ `.env` を使います。
 
