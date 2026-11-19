@@ -8,11 +8,9 @@ import logging
 import time
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
-from typing import Annotated, Literal
 
-import httpx
-from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.config import ProviderSettings, Settings
@@ -23,7 +21,6 @@ from app.storage import save_text_translation
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 INDEX_FILE = STATIC_DIR / "index.html"
-PdfClientFactory = Callable[[], httpx.AsyncClient]
 
 LANGUAGE_CODES = {
     "ja",
@@ -56,58 +53,6 @@ class TranslateRequest(BaseModel):
 
 def _sse(payload: dict[str, object]) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n\n"
-
-
-def _pdf_response_headers(response: httpx.Response) -> dict[str, str]:
-    return {
-        header: value
-        for header, value in response.headers.items()
-        if header.lower() in {"content-type", "content-disposition", "content-length"}
-    }
-
-
-async def _proxy_pdf_request(
-    client_factory: PdfClientFactory,
-    method: str,
-    url: str,
-    **kwargs: object,
-) -> Response:
-    try:
-        async with client_factory() as client:
-            response = await client.request(method, url, **kwargs)
-        return Response(
-            content=response.content,
-            status_code=response.status_code,
-            headers=_pdf_response_headers(response),
-        )
-    except httpx.HTTPError:
-        return JSONResponse({"error": "PDF gateway is unavailable."}, status_code=502)
-
-
-async def _proxy_pdf_download(
-    client_factory: PdfClientFactory, url: str
-) -> Response | StreamingResponse:
-    client = client_factory()
-    try:
-        request = client.build_request("GET", url)
-        response = await client.send(request, stream=True)
-    except httpx.HTTPError:
-        await client.aclose()
-        return JSONResponse({"error": "PDF gateway is unavailable."}, status_code=502)
-
-    async def body() -> AsyncIterator[bytes]:
-        try:
-            async for chunk in response.aiter_bytes():
-                yield chunk
-        finally:
-            await response.aclose()
-            await client.aclose()
-
-    return StreamingResponse(
-        body(),
-        status_code=response.status_code,
-        headers=_pdf_response_headers(response),
-    )
 
 
 def _validate_language_pair(source_lang: str, target_lang: str) -> tuple[str, str] | str:
@@ -198,15 +143,11 @@ async def stream_translation_events(
 def create_app(
     settings: Settings | None = None,
     provider_factory: Callable[[ProviderSettings], TranslationProvider] | None = None,
-    pdf_client_factory: PdfClientFactory | None = None,
 ) -> FastAPI:
     """Create an application, allowing tests to substitute its provider boundary."""
     app = FastAPI()
     app.state.settings = settings or Settings.from_environment()
     app.state.provider_factory = provider_factory or OpenAICompatibleProvider
-    app.state.pdf_client_factory = pdf_client_factory or (
-        lambda: httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
-    )
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:
@@ -239,55 +180,6 @@ def create_app(
                 provider_factory=request.app.state.provider_factory,
             ),
             media_type="text/event-stream",
-        )
-
-    @app.post("/api/translate-pdf")
-    async def translate_pdf(
-        file: Annotated[UploadFile, File()],
-        source_lang: Annotated[str, Form()] = "en",
-        target_lang: Annotated[str, Form()] = "ja",
-        pages: Annotated[str | None, Form()] = None,
-    ) -> Response:
-        gateway_url = f"{app.state.settings.pdf_gateway_url}/api/translate-pdf"
-        form_data = {"source_lang": source_lang, "target_lang": target_lang}
-        if pages is not None:
-            form_data["pages"] = pages
-        content = await file.read()
-        return await _proxy_pdf_request(
-            app.state.pdf_client_factory,
-            "POST",
-            gateway_url,
-            data=form_data,
-            files={
-                "file": (
-                    file.filename or "upload.pdf",
-                    content,
-                    file.content_type or "application/pdf",
-                )
-            },
-        )
-
-    @app.get("/api/translate-pdf/{task_id}/status")
-    async def pdf_status(task_id: str) -> Response:
-        return await _proxy_pdf_request(
-            app.state.pdf_client_factory,
-            "GET",
-            f"{app.state.settings.pdf_gateway_url}/api/translate-pdf/{task_id}/status",
-        )
-
-    @app.get("/api/translate-pdf/{task_id}/{variant}")
-    async def download_pdf(task_id: str, variant: Literal["mono", "dual"]) -> Response:
-        return await _proxy_pdf_download(
-            app.state.pdf_client_factory,
-            f"{app.state.settings.pdf_gateway_url}/api/translate-pdf/{task_id}/{variant}",
-        )
-
-    @app.delete("/api/translate-pdf/{task_id}")
-    async def cancel_pdf(task_id: str) -> Response:
-        return await _proxy_pdf_request(
-            app.state.pdf_client_factory,
-            "DELETE",
-            f"{app.state.settings.pdf_gateway_url}/api/translate-pdf/{task_id}",
         )
 
     return app

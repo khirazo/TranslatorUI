@@ -129,7 +129,6 @@ class Settings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     save_translations: bool = False
-    pdf_gateway_url: str = "http://localhost:4567"
     default_provider_id: str = "default"
     providers: tuple[ProviderSettings, ...] = Field(default_factory=lambda: (_default_provider(),))
 
@@ -141,14 +140,6 @@ class Settings(BaseModel):
         if self.default_provider_id not in provider_ids:
             raise ValueError("default_provider_id must identify a configured provider")
         return self
-
-    @field_validator("pdf_gateway_url")
-    @classmethod
-    def normalize_pdf_gateway_url(cls, value: str) -> str:
-        endpoint = value.strip().rstrip("/")
-        if not endpoint.startswith(("http://", "https://")):
-            raise ValueError("pdf_gateway_url must be an HTTP(S) URL")
-        return endpoint
 
     @property
     def selectable_providers(self) -> tuple[ProviderSettings, ...]:
@@ -183,7 +174,6 @@ class Settings(BaseModel):
         )
         return cls(
             save_translations=os.getenv("SAVE_TRANSLATIONS", "false"),
-            pdf_gateway_url=os.getenv("PDF_GATEWAY_URL", "http://localhost:4567"),
             default_provider_id=provider.id,
             providers=(provider,),
         )
@@ -205,11 +195,6 @@ class Settings(BaseModel):
             raise ValueError("each [[providers]] entry must be a table")
         return cls(
             save_translations=app.get("save_translations", False),
-            # Deployment topology is environment-specific: Compose reaches the Ruby
-            # gateway by service name, while direct execution uses localhost.
-            pdf_gateway_url=os.getenv(
-                "PDF_GATEWAY_URL", app.get("pdf_gateway_url", "http://localhost:4567")
-            ),
             default_provider_id=app.get("default_provider", ""),
             providers=parsed_providers,
         )

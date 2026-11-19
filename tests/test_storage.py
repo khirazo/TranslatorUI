@@ -4,7 +4,7 @@ from pathlib import Path
 from app.storage import load_translations, save_text_translation
 
 
-def test_save_text_translation_uses_the_existing_ruby_record_shape(tmp_path: Path) -> None:
+def test_save_text_translation_writes_a_text_record(tmp_path: Path) -> None:
     path = tmp_path / "translations.json"
 
     save_text_translation(

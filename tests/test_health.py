@@ -22,13 +22,13 @@ def test_root_serves_the_python_ui() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert "TranslatorUI" in response.text
-    assert "PDF翻訳は Python 側へ移行中です" in response.text
+    assert "PDF翻訳" not in response.text
     assert "sourceLang: 'auto'" not in response.text
     assert "targetLang: 'auto'" not in response.text
     assert "code: 'ja-easy'" not in response.text
     assert "isAutoMode" not in response.text
     assert "setAutoMode" not in response.text
-    assert "@click=\"activeTab = 'pdf'\"" not in response.text
+    assert "translate-pdf" not in response.text
     assert "provider_id: this.providerId || undefined" in response.text
 
 

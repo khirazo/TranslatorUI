@@ -1,4 +1,4 @@
-"""Compatibility helpers for the existing translation-history JSON format."""
+"""Helpers for the optional local translation-history JSON format."""
 
 from __future__ import annotations
 
@@ -7,13 +7,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-DEFAULT_TRANSLATIONS_FILE = (
-    Path(__file__).resolve().parents[2] / "localingo" / "data" / "translations.json"
-)
+DEFAULT_TRANSLATIONS_FILE = Path(__file__).resolve().parents[2] / "data" / "translations.json"
 
 
 def load_translations(path: Path = DEFAULT_TRANSLATIONS_FILE) -> list[dict[str, Any]]:
-    """Read existing history, treating absent or invalid history as an empty list like Ruby does."""
+    """Read local history, treating absent or invalid data as an empty list."""
     try:
         content = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
@@ -30,7 +28,7 @@ def save_text_translation(
     metrics: dict[str, float | int],
     path: Path = DEFAULT_TRANSLATIONS_FILE,
 ) -> None:
-    """Append one text translation using the established Ruby JSON record shape."""
+    """Append one text translation to the local JSON history."""
     translations = load_translations(path)
     translations.append(
         {

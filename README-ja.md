@@ -1,184 +1,59 @@
+# TranslatorUI
 
-# LocaLingo
+TranslatorUI は、OpenAI 互換 LLM エンドポイントを使って逐次テキスト翻訳を行うローカル Web UI です。
+LM Studio をはじめとする互換プロバイダーに対応します。PDF 翻訳は意図的に対象外であり、このリポジトリーは
+PDFMathTranslate を取得・同梱・実行しません。
 
-LocaLingoは、Preferred Networksによって開発された翻訳向け特化型大規模言語モデルであるPLaMo翻訳モデルを利用した、翻訳WebUIです。LM StudioやOllamaなどのOpenAI互換APIを持ったローカルLLMサーバーと連携して動作します。
+本プロジェクトは MIT ライセンスの LocaLingo を基にしており、MIT ライセンスは
+[`LICENSE`](LICENSE) に保持しています。
 
-![LocaLingo Screenshot](docs/screenshot-text.png)
+## ローカル起動
 
-テキストの翻訳だけでなく、PDFファイルの翻訳にも対応しています。PDFMathTranslateというライブラリを利用し、フォーマットを維持したまま翻訳を行います。PDF中に画像や図表が含まれていても問題ありません。(ただし、画像中の文字は翻訳されません。)
-
-![LocaLingo Screenshot](docs/screenshot-pdf.png)
-
-## 特徴
-
-- **文字長制限なし**: 一般の翻訳ツールでは2000文字程度の制限がありますが、LocaLingoではそのような制限はありません。使用するLLMサーバーの制限に依存しますが、数万、数十万文字の翻訳も可能です。
-- **ローカルでの動作**: インターネット接続が不要で、データのプライバシーを保護できます。すべての翻訳処理はローカル環境で行われます。
-- **使いやすいUI**: 直感的なユーザーインターフェースを提供し、簡単に翻訳作業を行えます。
-- **複数言語対応**: 英語、日本語、中国語、韓国語、フランス語、ドイツ語、スペイン語など、多数の言語間での翻訳が可能です。
-- **PDF翻訳対応**: PDFファイルの翻訳が可能です。フォーマットを維持したまま翻訳を行います。
-
-## 動作させる手順
-
-### LLMサーバーの用意
-
-1. LM StudioやOllamaなど、OpenAI互換APIを持ったローカルLLMサーバーをインストールし、起動します。
-2. [pfnet/plamo-2-translate · Hugging Face](https://huggingface.co/pfnet/plamo-2-translate)や[mmnga/plamo-2-translate-gguf · Hugging Face](https://huggingface.co/mmnga/plamo-2-translate-gguf)などを参考に、PLaMo翻訳モデルをLLMサーバーにロードします。
-3. LLMサーバーがOpenAI互換APIで動作していることを確認します。
-   - 例えばLM Studioの場合、Serve on Local Networkのオプションを有効にする必要があります。
-
-以下のようなcurlコマンドを実行して、LLMサーバーが正しく動作していることを確認します。ポート番号やエンドポイントは、使用しているLLMサーバーに応じて適宜変更してください。
-
-```bash
-curl http://localhost:1234/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "plamo-2-translate",
-    "messages": [
-      {
-        "role": "user",
-        "content": "<|plamo:op|>dataset\ntranslation\n\n<|plamo:op|>input lang=English\nHello!\n<|plamo:op|>output lang=Japanese"
-      }
-    ],
-    "stop": ["<|plamo:op|>", "<|plamo:reserved:0x1E|>"]
-  }'
-```
-
-PLaMo翻訳モデルは長文翻訳に対応していますが、ほとんどの場合LLMサーバーの設定で出力トークン長が制限されています。出力トークン長の設定を適切に調整してください。
-
-### ローカルでのみ動作させる場合
-
-1. compose.ymlを開き、tunnelに関するセクションをコメントアウトあるいは削除します。また、`LLM_ENDPOINT`環境変数を、使用しているLLMサーバーのエンドポイントに設定します。
-2. 以下のコマンドを実行して、LocaLingoを起動します。
-
-```bash
-sudo docker-compose up -d
-```
-
-### FastAPI テキスト翻訳 UI
-
-FastAPI サービスは、TranslatorUI のテキスト翻訳 UI と API をポート 4568 で配信します。
-リポジトリー直下に `.env.template` をコピーして `.env` を作成します。PLaMo プロバイダーを一つだけ
-使う従来設定では、LM Studio が公開している実際のモデル ID と接続先を設定してください。
-`LLM_ENDPOINT` は `/v1` を含めないルート URL です。
-
-複数プロバイダーを使う場合は、`translator-ui.toml.example` を `translator-ui.toml` にコピーし、
-`.env` で `TRANSLATOR_UI_CONFIG=translator-ui.toml` を設定します。各 `[[providers]]` は API/UI の
-選択に使う固定 `id` と、表示用の `name` を持ちます。API キーは `.env` に置き、TOML には
-`api_key_env = "VARIABLE_NAME"` と環境変数名だけを記載してください。UI には有効な
-`openai_compatible` プロバイダーを表示し、翻訳要求ごとに選択した ID を送信します。`plamo3`
-プロファイルだけが PLaMo 固有のプロンプト項目を送り、`generic` は送信しません。
-
-Docker Compose を使う場合、`TRANSLATOR_UI_CONFIG` のパスはホスト側の TOML ファイルを指します。
-同ファイルはコンテナ内の `/app/translator-ui.toml` に読み取り専用でマウントされるため、Compose を
-起動する前に作成してください。
-
-ACP のエントリーは TOML に登録できますが、ACP アダプターとプロセス隔離の安全対策を実装するまで、
-意図的に UI の選択肢へは表示しません。
-
-従来の Ruby / PDF サービスと並行して Compose で起動する場合も、同じ `.env` を使います。
-
-```bash
-docker compose up -d translator-ui
-```
-
-移行中は `127.0.0.1:4568` にのみ公開します。コンテナー内の既定値
-`LLM_ENDPOINT=http://host.docker.internal:1234` は、ホストで動作する LM Studio に接続します。
-従来の Ruby アプリケーションは、一時的な PDF ゲートウェイとしてポート 4567 に残します。FastAPI は
-`PDF_GATEWAY_URL` を通じて PDF のアップロード、状態照会、ダウンロード、キャンセル API を中継します。
-直接実行時は `http://localhost:4567`、Compose 内では `http://app:4567` を使います。FastAPI UI の
-PDF タブは、ブラウザー E2E 検証が完了するまで無効のままです。
-
-通常のローカル利用では、[uv](https://docs.astral.sh/uv/) を導入し、リポジトリー直下から次の
-ラッパーを実行してください。ラッパーはコミット済みの `uv.lock` に基づく `uv run --locked` を
-使用するため、仮想環境を手作業で有効化・管理する必要はありません。
+[uv](https://docs.astral.sh/uv/) を導入し、`.env.template` を `.env` にコピーして、LLM サーバーが
+公開するモデル ID と接続先を設定します。`LLM_ENDPOINT` は `/v1` を含まないルート URL です。
 
 ```bash
 ./start-translator-ui.sh
 ```
 
-Windows PowerShell では、同じ命名規則の PowerShell ラッパーを使用します。
+Windows PowerShell では次を実行します。
 
 ```powershell
 .\start-translator-ui.ps1
 ```
 
-既定ではローカル専用の `127.0.0.1:4568` で起動します。外部から到達可能にする場合や、別ポートを
-使う場合は引数を指定します。WSL を含む macOS / Linux では次のように指定します。
+ラッパーは `uv run --locked` を優先します。uv がない場合は既存の `.venv` を使い、`.venv` もない場合は
+依存関係がすでにある Python 3.12 以上だけを利用します。グローバル Python 環境へ依存関係を導入することは
+ありません。
+
+サービスは `127.0.0.1:4568` にバインドします。ヘルスチェック成功後にブラウザーを開くには、
+macOS/Linux/WSL では `--open-browser`、PowerShell では `-OpenBrowser` を指定してください。
+
+## プロバイダー設定
+
+複数プロバイダーを使う場合は、`translator-ui.toml.example` を `translator-ui.toml` にコピーして、
+`.env` に `TRANSLATOR_UI_CONFIG=translator-ui.toml` を設定します。API キーは `.env` に置き、TOML には
+`api_key_env = "OPENAI_COMPAT_API_KEY"` のように環境変数名だけを記載します。
+
+UI で選択できるのは有効な `openai_compatible` プロバイダーだけです。ACP の設定は TOML に予約できますが、
+プロセス隔離を含む専用アダプターを別途設計・実装するまで UI には表示しません。
+
+## Docker Compose
+
+Compose は任意であり、TranslatorUI サービスだけを起動します。
 
 ```bash
-./start-translator-ui.sh --listen-host 0.0.0.0 --port 4568
+docker compose up -d translator-ui
 ```
 
-PowerShell では次のように指定します。
+`TRANSLATOR_UI_CONFIG` のパスはホスト上の TOML ファイルを指します。Compose はこれをコンテナー内の
+`/app/translator-ui.toml` に読み取り専用でマウントするため、起動前に TOML を作成してください。
 
-```powershell
-.\start-translator-ui.ps1 -ListenHost 0.0.0.0 -Port 4568
-```
-
-macOS / Linux / WSL では `--open-browser`、PowerShell では `-OpenBrowser` を指定すると、
-`/health` の成功後にローカル UI を既定ブラウザーで開けます。ラッパーは最大30秒待機します。
-既定ではブラウザーを開かず、Compose、自動テスト、外部公開時にはこのオプションを使いません。
-
-uv がない場合、ラッパーは現在のプラットフォームで使用できる既存 `.venv` を利用します。`.venv` も
-ない場合は、必要なパッケージがすでに導入された Python 3.12 以上だけで起動を試みます。グローバル
-Python へパッケージを自動導入することはありません。uv を使わない場合は、自分で仮想環境を作り、
-互換用の依存関係を導入してください。
-
-```bash
-python -m venv .venv
-.venv/bin/python -m pip install -r translator_ui/requirements.txt
-```
-
-PowerShell では `.venv\Scripts\python -m pip install -r translator_ui\requirements.txt` を実行します。
-`.env` がない場合は、ラッパーが `.env.template` を基にホスト直接実行用の
-`LLM_ENDPOINT=http://localhost:1234` を設定した `.env` を作成します。作成後は LM Studio が公開している
-実際のモデル ID を確認してください。
-
-Docker Compose は再現可能な統合検証と PDF 移行のために利用できますが、テキスト翻訳 UI の通常起動には
-使いません。ローカルで起動したサービスは `Ctrl+C` で終了します。
-
-`LLM_MODEL_ENDPOINT` と `LLM_CHAT_ENDPOINT` は、モデル一覧と Chat Completions の API パスを
-個別に指定します。標準的な OpenAI 互換サーバーでは既定値の `/v1/models` と
-`/v1/chat/completions` を使います。ベースURLからの絶対パスのほか、`https://...` の完全URLも
-設定できるため、非標準のパス・別ホストにある OpenAI 互換エンドポイントにも対応できます。
-
-起動後は、macOS / Linux / WSL では別の端末から次のヘルスチェックを実行できます。
+## 確認
 
 ```bash
 curl http://localhost:4568/health
 ```
 
-PowerShell では次を実行します。
-
-```powershell
-Invoke-RestMethod http://localhost:4568/health
-```
-
-`{"status":"ok"}` が返れば、Python API は起動しています。ブラウザーで
-`http://localhost:4568/` を開くと FastAPI が配信する UI を使用できます。テキスト翻訳は同一
-オリジンの `/api/translate-text` を呼び出し、SSE で結果を順次表示します。
-
-この段階では `SAVE_TRANSLATIONS=false` のままにしてください。Ruby と Python が同じ
-`localingo/data/translations.json` を同時に更新しないためです。Python UI は明示的な言語ペアのみ
-対応しており、`auto` と `ja-easy` は使用できません。PDF 翻訳は Python 側への移行中のため、
-FastAPI 配信 UI では現在利用できません。移行期間中、ポート 4567 の Ruby アプリケーションは
-レガシー UI / PDF 検証用としてのみ残ります。
-
-### Cloudflare Tunnelを用いて外部公開する場合
-
-Cloudflareのサービスについての詳細な説明は他のドキュメントを参照してください。
-
-1. compose.ymlを開き、`LLM_ENDPOINT`環境変数を使用しているLLMサーバーのエンドポイントに設定します。
-2. `.env`ファイルを作成し、Cloudflare Tunnelの認証トークンを`TUNNEL_TOKEN`環境変数に設定します。
-3. 必要に応じてCloudflare Accessの設定を行って下さい。この設定を行わない場合、全世界の誰でも翻訳サービスにアクセスできるようになります。
-4. 以下のコマンドを実行して、LocaLingoを起動します。
-
-```bash
-sudo docker-compose up -d
-```
-
-## 注意事項
-
-1. LocaLingoは、Preferred Networksが開発したPLaMo翻訳モデルを利用しています。PLaMo翻訳モデルの使用には、PLaMoコミュニティライセンスに従う必要があります。具体的には、個人や中小規模の企業は有償無償問わず自由に使用できますが、大規模な商用利用には別途ライセンス契約が必要です。詳細は[PLaMo Community Licenseについて](https://tech.preferred.jp/ja/blog/plamo-community-license/)や[PLaMoコミュニティライセンス契約](https://plamo.preferredai.jp/info/plamo-community-license-ja)をご参照ください。
-2. LocaLingoはLLMサーバーの機能を持っていません。動作させるためには、LM StudioやOllamaなどのOpenAI互換APIを持ったローカルLLMサーバーが必要です。
-3. 初期状態ではすべての翻訳を記録します。翻訳データを保存しないようにするには、compose.yml内の`SAVE_TRANSLATIONS`環境変数を`false`に設定してください。
+期待する応答は `{"status":"ok"}` です。翻訳要求は同一オリジンの `/api/translate-text` に送られ、
+Server-Sent Events で逐次返却されます。

@@ -55,27 +55,3 @@ def test_missing_explicit_config_file_is_rejected(monkeypatch, tmp_path) -> None
         assert "TRANSLATOR_UI_CONFIG does not exist" in str(error)
     else:
         raise AssertionError("An explicit missing config file must be rejected.")
-
-
-def test_pdf_gateway_environment_overrides_toml_for_deployment(monkeypatch, tmp_path) -> None:
-    config_file = tmp_path / "providers.toml"
-    config_file.write_text(
-        """
-[app]
-default_provider = "generic"
-pdf_gateway_url = "http://localhost:4567"
-
-[[providers]]
-id = "generic"
-name = "Generic"
-kind = "openai_compatible"
-base_url = "https://api.example.com"
-model = "example"
-""".strip(),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("PDF_GATEWAY_URL", "http://app:4567")
-
-    settings = Settings.from_file(config_file)
-
-    assert settings.pdf_gateway_url == "http://app:4567"

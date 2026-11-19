@@ -1,5 +1,4 @@
 # Ruff configuration for TranslatorUI's Python service.
-# The existing Ruby and PDF services remain outside this lint scope.
 
 line-length = 100
 target-version = "py312"

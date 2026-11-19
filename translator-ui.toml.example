@@ -4,8 +4,6 @@
 [app]
 default_provider = "plamo-local"
 save_translations = false
-# Direct host execution uses http://localhost:4567. Compose uses http://app:4567.
-pdf_gateway_url = "http://localhost:4567"
 
 [[providers]]
 id = "plamo-local"
