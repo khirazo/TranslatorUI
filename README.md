@@ -96,6 +96,11 @@ On PowerShell:
 .\start-translator-ui.ps1 -ListenHost 0.0.0.0 -Port 4568
 ```
 
+Add `--open-browser` on macOS, Linux, or WSL, or `-OpenBrowser` on PowerShell, to open the local
+UI in the default browser after `/health` succeeds. The wrapper waits for up to 30 seconds and does
+not open a browser by default; Compose, automated tests, and external-publication workflows do not
+use this option.
+
 If uv is unavailable, the wrapper uses an existing platform-compatible `.venv`. If there is no
 `.venv`, it tries a local Python 3.12-or-newer installation only when the required packages are
 already available. It never installs packages into the global Python environment. Non-uv users can

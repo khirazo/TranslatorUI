@@ -97,6 +97,10 @@ PowerShell では次のように指定します。
 .\start-translator-ui.ps1 -ListenHost 0.0.0.0 -Port 4568
 ```
 
+macOS / Linux / WSL では `--open-browser`、PowerShell では `-OpenBrowser` を指定すると、
+`/health` の成功後にローカル UI を既定ブラウザーで開けます。ラッパーは最大30秒待機します。
+既定ではブラウザーを開かず、Compose、自動テスト、外部公開時にはこのオプションを使いません。
+
 uv がない場合、ラッパーは現在のプラットフォームで使用できる既存 `.venv` を利用します。`.venv` も
 ない場合は、必要なパッケージがすでに導入された Python 3.12 以上だけで起動を試みます。グローバル
 Python へパッケージを自動導入することはありません。uv を使わない場合は、自分で仮想環境を作り、

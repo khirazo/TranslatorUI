@@ -4,6 +4,7 @@ set -euo pipefail
 
 listen_host="127.0.0.1"
 port="4568"
+open_browser=false
 minimum_python_version="3.12"
 
 usage() {
@@ -13,6 +14,7 @@ Usage: ./start-translator-ui.sh [options]
 Options:
   --listen-host HOST       Address to bind (default: 127.0.0.1)
   --port PORT              Port to bind (default: 4568)
+  --open-browser           Open the UI after its health check succeeds
   -h, --help               Show this help message
 EOF
 }
@@ -26,6 +28,10 @@ while [ "$#" -gt 0 ]; do
         --port)
             port="$2"
             shift 2
+            ;;
+        --open-browser)
+            open_browser=true
+            shift
             ;;
         -h|--help)
             usage
@@ -69,6 +75,33 @@ assert_supported_python() {
     fi
 }
 
+open_browser_when_ready() {
+    local url="$1"
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "Cannot open the browser automatically because curl is unavailable." >&2
+        return
+    fi
+
+    for _ in $(seq 1 60); do
+        if curl --fail --silent --max-time 1 "$url/health" >/dev/null 2>&1; then
+            if command -v wslview >/dev/null 2>&1; then
+                wslview "$url" >/dev/null 2>&1
+            elif command -v open >/dev/null 2>&1; then
+                open "$url" >/dev/null 2>&1
+            elif command -v xdg-open >/dev/null 2>&1; then
+                xdg-open "$url" >/dev/null 2>&1
+            elif command -v cmd.exe >/dev/null 2>&1; then
+                cmd.exe /c start "" "$url" >/dev/null 2>&1
+            else
+                echo "TranslatorUI is ready at $url" >&2
+            fi
+            return
+        fi
+        sleep 0.5
+    done
+}
+
 if [ ! -f "$env_path" ]; then
     if [ ! -f "$env_template_path" ]; then
         echo "Environment template file was not found: $env_template_path" >&2
@@ -80,18 +113,20 @@ if [ ! -f "$env_path" ]; then
 fi
 
 echo "Starting TranslatorUI at http://$listen_host:$port"
+
+has_uv=false
 if command -v uv >/dev/null 2>&1; then
-    exec uv run --locked -- python -m uvicorn app.main:app --app-dir translator_ui --host "$listen_host" --port "$port"
+    has_uv=true
 fi
 
-if [ -x "$venv_python" ]; then
+python=""
+if [ "$has_uv" = false ] && [ -x "$venv_python" ]; then
     assert_supported_python "$venv_python" "The existing virtual environment"
     python="$venv_python"
-elif [ -e "$venv_path" ]; then
+elif [ "$has_uv" = false ] && [ -e "$venv_path" ]; then
     echo "The existing .venv is not a usable Unix virtual environment. Install uv or recreate .venv yourself." >&2
     exit 1
-else
-    python=""
+elif [ "$has_uv" = false ]; then
     for candidate in python3 python; do
         if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'; then
             python="$candidate"
@@ -104,9 +139,43 @@ else
     fi
 fi
 
-if ! "$python" -c 'import fastapi, httpx, pydantic, dotenv, uvicorn' >/dev/null 2>&1; then
+if [ "$has_uv" = false ] && ! "$python" -c 'import fastapi, httpx, pydantic, dotenv, uvicorn' >/dev/null 2>&1; then
     echo "TranslatorUI dependencies are unavailable. Install uv (recommended), or create .venv and run '$python -m pip install -r translator_ui/requirements.txt'." >&2
     exit 1
 fi
 
-exec "$python" -m uvicorn app.main:app --app-dir translator_ui --host "$listen_host" --port "$port"
+browser_waiter_pid=""
+if [ "$open_browser" = true ]; then
+    browser_host="$listen_host"
+    if [ "$browser_host" = "0.0.0.0" ]; then
+        browser_host="127.0.0.1"
+    elif [ "$browser_host" = "::" ]; then
+        browser_host="[::1]"
+    fi
+    open_browser_when_ready "http://$browser_host:$port" &
+    browser_waiter_pid="$!"
+fi
+
+cleanup() {
+    if [ -n "$browser_waiter_pid" ]; then
+        kill "$browser_waiter_pid" 2>/dev/null || true
+        wait "$browser_waiter_pid" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+if [ "$has_uv" = true ]; then
+    if uv run --locked -- python -m uvicorn app.main:app --app-dir translator_ui --host "$listen_host" --port "$port"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
+else
+    if "$python" -m uvicorn app.main:app --app-dir translator_ui --host "$listen_host" --port "$port"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
+fi
+
+exit "$exit_code"

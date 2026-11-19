@@ -4,7 +4,9 @@ param(
     [string]$ListenHost = "127.0.0.1",
 
     [ValidateRange(1, 65535)]
-    [int]$Port = 4568
+    [int]$Port = 4568,
+
+    [switch]$OpenBrowser
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,6 +56,27 @@ function Get-LocalPython {
     return @{ Executable = "python"; Arguments = @() }
 }
 
+function Start-BrowserWhenReady {
+    param([string]$Url)
+
+    Start-Job -ArgumentList $Url -ScriptBlock {
+        param([string]$TargetUrl)
+
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            try {
+                $response = Invoke-WebRequest -Uri "$TargetUrl/health" -TimeoutSec 1 -ErrorAction Stop
+                if ($response.StatusCode -eq 200) {
+                    Start-Process $TargetUrl
+                    return
+                }
+            } catch {
+                # The server is still starting or has exited.
+            }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+}
+
 if (-not (Test-Path $envPath)) {
     if (-not (Test-Path $envTemplatePath)) {
         throw "Environment template file was not found: $envTemplatePath"
@@ -68,28 +91,45 @@ if (-not (Test-Path $envPath)) {
     Write-Warning "Review $envPath and set LLM_MODEL to the model ID published by your LLM server."
 }
 
-Write-Host "Starting TranslatorUI at http://${ListenHost}:$Port"
+Write-Host "Starting TranslatorUI at http://$($ListenHost):$Port"
 $uv = Get-Command -Name "uv" -ErrorAction SilentlyContinue
-if ($null -ne $uv) {
-    & $uv.Source run --locked -- python -m uvicorn app.main:app --app-dir translator_ui --host $ListenHost --port $Port
-    exit $LASTEXITCODE
-}
-
-if (Test-Path $venvPython) {
-    $venvVersion = Get-PythonVersion -Executable $venvPython
-    if ($null -eq $venvVersion) {
-        throw "The existing virtual environment is not usable: $venvPython. Install uv or recreate .venv yourself."
+$python = $null
+if ($null -eq $uv) {
+    if (Test-Path $venvPython) {
+        $venvVersion = Get-PythonVersion -Executable $venvPython
+        if ($null -eq $venvVersion) {
+            throw "The existing virtual environment is not usable: $venvPython. Install uv or recreate .venv yourself."
+        }
+        Assert-SupportedPython -Version $venvVersion -Description "The existing virtual environment"
+        $python = @{ Executable = $venvPython; Arguments = @() }
+    } else {
+        $python = Get-LocalPython
     }
-    Assert-SupportedPython -Version $venvVersion -Description "The existing virtual environment"
-    $python = @{ Executable = $venvPython; Arguments = @() }
-} else {
-    $python = Get-LocalPython
+
+    & $python.Executable @($python.Arguments) -c "import fastapi, httpx, pydantic, dotenv, uvicorn"
+    if ($LASTEXITCODE -ne 0) {
+        throw "TranslatorUI dependencies are unavailable. Install uv (recommended), or create .venv and run '$($python.Executable) -m pip install -r translator_ui/requirements.txt'."
+    }
 }
 
-& $python.Executable @($python.Arguments) -c "import fastapi, httpx, pydantic, dotenv, uvicorn"
-if ($LASTEXITCODE -ne 0) {
-    throw "TranslatorUI dependencies are unavailable. Install uv (recommended), or create .venv and run '$($python.Executable) -m pip install -r translator_ui/requirements.txt'."
+$browserJob = $null
+if ($OpenBrowser) {
+    $browserHost = if ($ListenHost -eq "0.0.0.0") { "127.0.0.1" } elseif ($ListenHost -eq "::") { "[::1]" } else { $ListenHost }
+    $browserJob = Start-BrowserWhenReady -Url "http://$($browserHost):$Port"
 }
 
-& $python.Executable @($python.Arguments) -m uvicorn app.main:app --app-dir translator_ui --host $ListenHost --port $Port
-exit $LASTEXITCODE
+try {
+    if ($null -ne $uv) {
+        & $uv.Source run --locked -- python -m uvicorn app.main:app --app-dir translator_ui --host $ListenHost --port $Port
+    } else {
+        & $python.Executable @($python.Arguments) -m uvicorn app.main:app --app-dir translator_ui --host $ListenHost --port $Port
+    }
+    $exitCode = $LASTEXITCODE
+} finally {
+    if ($null -ne $browserJob) {
+        Stop-Job -Job $browserJob -ErrorAction SilentlyContinue
+        Remove-Job -Job $browserJob -Force -ErrorAction SilentlyContinue
+    }
+}
+
+exit $exitCode
