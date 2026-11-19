@@ -66,6 +66,10 @@ for API/UI selection and a separate display `name`. Keep API keys in `.env` and 
 `openai_compatible` providers and sends the selected ID with each translation request. The
 `plamo3` profile sends PLaMo-specific prompt fields, while `generic` does not.
 
+When using Docker Compose, the path in `TRANSLATOR_UI_CONFIG` identifies the host TOML file. It is
+mounted read-only at `/app/translator-ui.toml` in the container. Create the TOML file before
+starting Compose.
+
 ACP entries may be registered in TOML now, but they are deliberately not exposed in the UI until
 the ACP adapter and its process-isolation safeguards are implemented.
 
@@ -77,7 +81,10 @@ docker compose up -d translator-ui
 
 It is published only at `127.0.0.1:4568` during migration. In the container, the default
 `LLM_ENDPOINT=http://host.docker.internal:1234` reaches an LM Studio server running on the host.
-The legacy Ruby application remains on port 4567 until PDF routing moves to FastAPI.
+The legacy Ruby application remains on port 4567 as the temporary PDF gateway. FastAPI now proxies
+the PDF upload, status, download, and cancellation APIs through `PDF_GATEWAY_URL`
+(`http://localhost:4567` for direct execution and `http://app:4567` in Compose). The FastAPI UI
+keeps its PDF tab disabled until browser E2E verification is complete.
 
 For normal local use, install [uv](https://docs.astral.sh/uv/) and run the wrapper from the
 repository root. The wrapper uses `uv run --locked`, so it creates or reuses the project

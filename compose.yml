@@ -8,6 +8,14 @@ services:
       - "127.0.0.1:4568:8000"
     env_file:
       - .env
+    environment:
+      TRANSLATOR_UI_CONFIG: /app/translator-ui.toml
+      PDF_GATEWAY_URL: http://app:4567
+    volumes:
+      - type: bind
+        source: ${TRANSLATOR_UI_CONFIG:-./translator-ui.toml}
+        target: /app/translator-ui.toml
+        read_only: true
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

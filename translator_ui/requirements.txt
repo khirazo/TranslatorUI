@@ -39,6 +39,8 @@ pydantic-core==2.50.4
     # via pydantic
 python-dotenv==1.2.4
     # via translator-ui
+python-multipart==0.0.34
+    # via translator-ui
 starlette==1.10.0
     # via fastapi
 typing-extensions==4.16.0

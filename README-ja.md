@@ -68,6 +68,10 @@ FastAPI サービスは、TranslatorUI のテキスト翻訳 UI と API をポ�
 `openai_compatible` プロバイダーを表示し、翻訳要求ごとに選択した ID を送信します。`plamo3`
 プロファイルだけが PLaMo 固有のプロンプト項目を送り、`generic` は送信しません。
 
+Docker Compose を使う場合、`TRANSLATOR_UI_CONFIG` のパスはホスト側の TOML ファイルを指します。
+同ファイルはコンテナ内の `/app/translator-ui.toml` に読み取り専用でマウントされるため、Compose を
+起動する前に作成してください。
+
 ACP のエントリーは TOML に登録できますが、ACP アダプターとプロセス隔離の安全対策を実装するまで、
 意図的に UI の選択肢へは表示しません。
 
@@ -79,7 +83,10 @@ docker compose up -d translator-ui
 
 移行中は `127.0.0.1:4568` にのみ公開します。コンテナー内の既定値
 `LLM_ENDPOINT=http://host.docker.internal:1234` は、ホストで動作する LM Studio に接続します。
-PDF の経路を FastAPI に移すまでは、従来の Ruby アプリケーションをポート 4567 で残します。
+従来の Ruby アプリケーションは、一時的な PDF ゲートウェイとしてポート 4567 に残します。FastAPI は
+`PDF_GATEWAY_URL` を通じて PDF のアップロード、状態照会、ダウンロード、キャンセル API を中継します。
+直接実行時は `http://localhost:4567`、Compose 内では `http://app:4567` を使います。FastAPI UI の
+PDF タブは、ブラウザー E2E 検証が完了するまで無効のままです。
 
 通常のローカル利用では、[uv](https://docs.astral.sh/uv/) を導入し、リポジトリー直下から次の
 ラッパーを実行してください。ラッパーはコミット済みの `uv.lock` に基づく `uv run --locked` を
