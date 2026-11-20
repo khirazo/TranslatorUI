@@ -4,6 +4,7 @@
 
 # Python virtual environments, bytecode, test caches, and build artifacts.
 /.venv/
+/.venv-*/
 /venv/
 __pycache__/
 *.py[cod]

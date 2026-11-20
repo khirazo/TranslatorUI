@@ -6,7 +6,9 @@ param(
     [ValidateRange(1, 65535)]
     [int]$Port = 4568,
 
-    [switch]$OpenBrowser
+    [switch]$OpenBrowser,
+
+    [switch]$NoTui
 )
 
 $ErrorActionPreference = "Stop"
@@ -112,17 +114,44 @@ if ($null -eq $uv) {
     }
 }
 
-$browserJob = $null
+$launcherArguments = @("-m", "app.launcher", "--host", $ListenHost, "--port", "$Port")
+$uvicornArguments = @("-m", "uvicorn", "app.main:app", "--app-dir", "translator_ui", "--host", $ListenHost, "--port", "$Port")
 if ($OpenBrowser) {
-    $browserHost = if ($ListenHost -eq "0.0.0.0") { "127.0.0.1" } elseif ($ListenHost -eq "::") { "[::1]" } else { $ListenHost }
-    $browserJob = Start-BrowserWhenReady -Url "http://$($browserHost):$Port"
+    $launcherArguments += "--open-browser"
+}
+if ($NoTui) {
+    $launcherArguments += "--no-tui"
 }
 
+Push-Location $repositoryRoot
+$previousPythonPath = $env:PYTHONPATH
+$launcherPythonPath = Join-Path $repositoryRoot "translator_ui"
+$env:PYTHONPATH = if ([string]::IsNullOrEmpty($previousPythonPath)) {
+    $launcherPythonPath
+} else {
+    "$launcherPythonPath;$previousPythonPath"
+}
 try {
     if ($null -ne $uv) {
-        & $uv.Source run --locked -- python -m uvicorn app.main:app --app-dir translator_ui --host $ListenHost --port $Port
+        $launcherExecutable = (& $uv.Source run --locked -- python -c "import sys; print(sys.executable)" | Select-Object -Last 1).Trim()
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($launcherExecutable)) {
+            throw "uv could not resolve the locked Python environment for TranslatorUI."
+        }
+        $runtime = @{ Executable = $launcherExecutable; Arguments = @() }
     } else {
-        & $python.Executable @($python.Arguments) -m uvicorn app.main:app --app-dir translator_ui --host $ListenHost --port $Port
+        $runtime = $python
+    }
+
+    $browserJob = $null
+    if ($env:TERM_PROGRAM -ieq "vscode") {
+        Write-Host "VS Code integrated terminal detected; starting Uvicorn directly so Ctrl+C stops it reliably."
+        if ($OpenBrowser) {
+            $browserHost = if ($ListenHost -eq "0.0.0.0") { "127.0.0.1" } elseif ($ListenHost -eq "::") { "[::1]" } else { $ListenHost }
+            $browserJob = Start-BrowserWhenReady -Url "http://$($browserHost):$Port"
+        }
+        & $runtime.Executable @($runtime.Arguments) @uvicornArguments
+    } else {
+        & $runtime.Executable @($runtime.Arguments) @launcherArguments
     }
     $exitCode = $LASTEXITCODE
 } finally {
@@ -130,6 +159,12 @@ try {
         Stop-Job -Job $browserJob -ErrorAction SilentlyContinue
         Remove-Job -Job $browserJob -Force -ErrorAction SilentlyContinue
     }
+    if ($null -eq $previousPythonPath) {
+        Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+    } else {
+        $env:PYTHONPATH = $previousPythonPath
+    }
+    Pop-Location
 }
 
 exit $exitCode

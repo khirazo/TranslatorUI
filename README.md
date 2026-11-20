@@ -22,12 +22,89 @@ On Windows PowerShell:
 .\start-translator-ui.ps1
 ```
 
-The wrappers prefer `uv run --locked`. If uv is unavailable, they use an existing `.venv`; without
-one they only use a local Python 3.12+ installation when all dependencies are already present.
-They never install dependencies into the global Python environment.
+If Windows PowerShell 5 rejects the script under its execution policy, run it once without changing
+the persistent policy:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\start-translator-ui.ps1
+```
+
+Follow an organization-managed group policy if it disallows this. For a downloaded checkout under
+`RemoteSigned`, `Unblock-File .\start-translator-ui.ps1` is another option.
+
+The wrappers prefer `uv run --locked` to resolve the locked environment, then launch the controller
+directly with that environment's Python so `Ctrl+C` reaches it instead of an uv relay. If uv is
+unavailable, they use an existing `.venv`; without one they only use a local Python 3.12+
+installation when all dependencies are already present. They never install dependencies into the
+global Python environment.
 
 The service binds to `127.0.0.1:4568`. Add `--open-browser` on macOS/Linux/WSL or `-OpenBrowser`
 on PowerShell to open the browser after the health check succeeds.
+
+When started from an interactive ANSI-capable terminal, the wrappers show a small terminal
+controller. Press `q` then `y` to stop only the TranslatorUI server, `o` to open the UI again,
+`h` or `?` for help, and `j`/`k`/`f` to browse or follow the in-memory server log. `Ctrl+C` also
+stops the server safely. The browser is never closed by the launcher. Add `--no-tui` on
+macOS/Linux/WSL or `-NoTui` on PowerShell to keep plain foreground logs; non-interactive
+invocations automatically use that mode. The Windows VS Code integrated terminal also uses it
+automatically and runs Uvicorn in the foreground so that `Ctrl+C` remains reliable; use Windows
+Terminal or another supported external terminal for the TUI.
+
+On WSL, `--open-browser` and `o` use `wslview`, then `cmd.exe /c start`, to open the Windows
+default browser.
+
+### Sharing a checkout between Windows and WSL
+
+Windows and Linux virtual environments are not interchangeable. If WSL opens the same checkout
+through `/mnt/<drive>/...` and both platforms use the default `.venv`, WSL's uv can replace the
+Windows environment with a Linux one. Windows uv then cannot remove the Linux `lib64` link and
+stops with `failed to remove file '.venv/lib64'`.
+
+Separate checkouts are safest. If both platforms must share one checkout, use separate environment
+directories before starting the wrappers:
+
+```powershell
+# Windows PowerShell, from the repository root
+$env:UV_PROJECT_ENVIRONMENT = ".venv-win"
+.\start-translator-ui.ps1
+```
+
+```bash
+# WSL, from the same repository root
+export UV_PROJECT_ENVIRONMENT=.venv-linux
+./start-translator-ui.sh
+```
+
+Both directories are ignored by Git. You may run `uv sync --locked` once in each environment with
+the corresponding variable set.
+
+To repair a default `.venv` already replaced by WSL, first stop all TranslatorUI, Python, and uv
+processes. First remove only `.venv` from Windows, then rerun the wrapper. `uv run --locked`
+automatically recreates the Windows environment, so a manual `uv sync` is normally unnecessary.
+This does not remove source files, `.env`, or `translator-ui.toml`.
+
+```powershell
+# Windows PowerShell, from the repository root
+if (-not (Test-Path -LiteralPath .\pyproject.toml)) { throw "Run this from the repository root." }
+Remove-Item -LiteralPath .\.venv -Recurse -Force
+.\start-translator-ui.ps1
+```
+
+Only if Windows cannot delete `.venv` because of `failed to remove file '.venv/lib64'` or an
+access-denied error, use WSL. Verify that the current directory is the intended repository root,
+then remove only the virtual environment:
+
+```bash
+pwd
+test -f pyproject.toml && test -d .venv || exit 1
+rm -rf -- .venv
+```
+
+Return to Windows PowerShell in the repository root and rerun the wrapper:
+
+```powershell
+.\start-translator-ui.ps1
+```
 
 ## Provider configuration
 
