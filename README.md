@@ -13,24 +13,24 @@ Install [uv](https://docs.astral.sh/uv/), copy `.env.template` to `.env`, and se
 endpoint exposed by your LLM server. `LLM_ENDPOINT` is the root URL without `/v1`.
 
 ```bash
-./start-translator-ui.sh
+./translator-ui.sh
 ```
 
 On Windows PowerShell:
 
 ```powershell
-.\start-translator-ui.ps1
+.\translator-ui.ps1
 ```
 
 If Windows PowerShell 5 rejects the script under its execution policy, run it once without changing
 the persistent policy:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\start-translator-ui.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\translator-ui.ps1
 ```
 
 Follow an organization-managed group policy if it disallows this. For a downloaded checkout under
-`RemoteSigned`, `Unblock-File .\start-translator-ui.ps1` is another option.
+`RemoteSigned`, `Unblock-File .\translator-ui.ps1` is another option.
 
 The wrappers prefer `uv run --locked` to resolve the locked environment, then launch the controller
 directly with that environment's Python so `Ctrl+C` reaches it instead of an uv relay. If uv is
@@ -66,13 +66,13 @@ directories before starting the wrappers:
 ```powershell
 # Windows PowerShell, from the repository root
 $env:UV_PROJECT_ENVIRONMENT = ".venv-win"
-.\start-translator-ui.ps1
+.\translator-ui.ps1
 ```
 
 ```bash
 # WSL, from the same repository root
 export UV_PROJECT_ENVIRONMENT=.venv-linux
-./start-translator-ui.sh
+./translator-ui.sh
 ```
 
 Both directories are ignored by Git. You may run `uv sync --locked` once in each environment with
@@ -87,7 +87,7 @@ This does not remove source files, `.env`, or `translator-ui.toml`.
 # Windows PowerShell, from the repository root
 if (-not (Test-Path -LiteralPath .\pyproject.toml)) { throw "Run this from the repository root." }
 Remove-Item -LiteralPath .\.venv -Recurse -Force
-.\start-translator-ui.ps1
+.\translator-ui.ps1
 ```
 
 Only if Windows cannot delete `.venv` because of `failed to remove file '.venv/lib64'` or an
@@ -103,7 +103,7 @@ rm -rf -- .venv
 Return to Windows PowerShell in the repository root and rerun the wrapper:
 
 ```powershell
-.\start-translator-ui.ps1
+.\translator-ui.ps1
 ```
 
 ## Provider configuration

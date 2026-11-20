@@ -10,7 +10,7 @@ minimum_python_version="3.12"
 
 usage() {
     cat <<'EOF'
-Usage: ./start-translator-ui.sh [options]
+Usage: ./translator-ui.sh [options]
 
 Options:
   --listen-host HOST       Address to bind (default: 127.0.0.1)

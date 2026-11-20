@@ -13,24 +13,24 @@ PDFMathTranslate を取得・同梱・実行しません。
 公開するモデル ID と接続先を設定します。`LLM_ENDPOINT` は `/v1` を含まないルート URL です。
 
 ```bash
-./start-translator-ui.sh
+./translator-ui.sh
 ```
 
 Windows PowerShell では次を実行します。
 
 ```powershell
-.\start-translator-ui.ps1
+.\translator-ui.ps1
 ```
 
 Windows PowerShell 5 で Execution Policy により読み込みが拒否される場合は、ポリシーを恒久変更せず、
 その起動だけ次のように実行できます。
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\start-translator-ui.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\translator-ui.ps1
 ```
 
 組織のグループポリシーがこれを禁止する場合は、そのポリシーに従ってください。ダウンロードしたリポジトリーでは、
-ポリシーが `RemoteSigned` の場合に限り `Unblock-File .\start-translator-ui.ps1` も選択肢です。
+ポリシーが `RemoteSigned` の場合に限り `Unblock-File .\translator-ui.ps1` も選択肢です。
 
 ラッパーは `uv run --locked` を優先してロック済み環境を解決してから、その環境のPythonでlauncherを直接起動します。
 これにより `Ctrl+C` はuvの中継ではなくlauncherへ届きます。uv がない場合は既存の `.venv` を使い、`.venv` も
@@ -61,13 +61,13 @@ Windows側の `uv` はそのLinux用リンクを削除できず、`failed to rem
 ```powershell
 # Windows PowerShell: リポジトリーのルートで実行
 $env:UV_PROJECT_ENVIRONMENT = ".venv-win"
-.\start-translator-ui.ps1
+.\translator-ui.ps1
 ```
 
 ```bash
 # WSL: 同じチェックアウトのルートで実行
 export UV_PROJECT_ENVIRONMENT=.venv-linux
-./start-translator-ui.sh
+./translator-ui.sh
 ```
 
 `.venv-win` と `.venv-linux` はGit管理外です。各端末でこの環境変数を設定した状態で `uv sync --locked` を
@@ -82,7 +82,7 @@ export UV_PROJECT_ENVIRONMENT=.venv-linux
 # Windows PowerShell: リポジトリーのルートで実行
 if (-not (Test-Path -LiteralPath .\pyproject.toml)) { throw "Run this from the repository root." }
 Remove-Item -LiteralPath .\.venv -Recurse -Force
-.\start-translator-ui.ps1
+.\translator-ui.ps1
 ```
 
 Windows側の削除が `failed to remove file '.venv/lib64'` やアクセス拒否で失敗した場合だけ、WSLで対象リポジトリーの
@@ -97,7 +97,7 @@ rm -rf -- .venv
 その後、Windows PowerShellでリポジトリーのルートに戻り、起動ラッパーを再実行します。
 
 ```powershell
-.\start-translator-ui.ps1
+.\translator-ui.ps1
 ```
 
 ## プロバイダー設定
