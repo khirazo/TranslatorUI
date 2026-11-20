@@ -116,6 +116,12 @@ Only enabled `openai_compatible` providers are available in the UI. ACP entries 
 TOML but remain unavailable until a separately designed adapter with process-isolation safeguards
 is implemented.
 
+Each provider may retain its legacy `model` field, or define one or more
+`[[providers.models]]` entries. A model entry can expose an optional allowlist of `efforts`; only
+models that declare an `effort_request_field` send that value upstream. The **Reload settings**
+button rereads `.env` and the selected TOML without restarting the app. Parent-process environment
+variables override `.env`; failed reloads leave the running configuration unchanged.
+
 ## Docker Compose
 
 Compose is optional and starts only the TranslatorUI service:

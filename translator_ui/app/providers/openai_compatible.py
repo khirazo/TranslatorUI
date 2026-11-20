@@ -9,10 +9,29 @@ from typing import Any
 
 import httpx
 
-from app.config import ProviderSettings
+from app.config import ProviderSettings, TranslationOptions
 from app.providers.base import TranslationProviderError
 
 PLAMO_STOP_TOKENS = ["<|plamo:tag|>", "<|plamo:bos|>"]
+PLAMO_SPECIAL_TOKENS = {
+    "tag": "<|plamo:tag|>",
+    "msg": "<|plamo:msg|>",
+    "key": "<|plamo:key|>",
+    "val": "<|plamo:val|>",
+}
+
+
+def build_pfml3_prompt(*, text: str, source_lang: str, target_lang: str, form: str | None) -> str:
+    """Build PLaMo 3 Translate's documented PFML3 translation prompt."""
+    token = PLAMO_SPECIAL_TOKENS
+    prompt = (
+        f"{token['tag']}dataset{token['msg']}translation"
+        f"{token['tag']}input{token['key']}lang{token['val']}{source_lang}{token['msg']}{text}"
+        f"{token['tag']}output{token['key']}lang{token['val']}{target_lang}"
+    )
+    if target_lang == "ja" and form in {"polite", "plain"}:
+        prompt += f"{token['key']}form{token['val']}{form}"
+    return f"{prompt}{token['msg']}"
 
 
 class OpenAICompatibleProvider:
@@ -22,20 +41,33 @@ class OpenAICompatibleProvider:
         self._settings = settings
         self._client = client
 
-    def _request_payload(self, *, text: str, source_lang: str, target_lang: str) -> dict[str, Any]:
+    def _request_payload(
+        self,
+        *,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        options: TranslationOptions | None = None,
+    ) -> dict[str, Any]:
+        content = text
+        if self._settings.translation_profile == "plamo3":
+            content = build_pfml3_prompt(
+                text=text,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                form=options.japanese_style if options else None,
+            )
         payload: dict[str, Any] = {
-            "model": self._settings.model,
-            "messages": [{"role": "user", "content": text}],
+            "model": (options.model_id if options else self._settings.model),
+            "messages": [{"role": "user", "content": content}],
             "stream": True,
             "temperature": 0,
             "max_tokens": self._settings.max_tokens,
         }
         if self._settings.translation_profile == "plamo3":
-            payload["chat_template_kwargs"] = {
-                "source_lang": source_lang,
-                "target_lang": target_lang,
-            }
             payload["stop"] = PLAMO_STOP_TOKENS
+        if options and options.effort and options.effort_request_field:
+            payload[options.effort_request_field] = options.effort
         return payload
 
     def _headers(self) -> dict[str, str]:
@@ -45,7 +77,12 @@ class OpenAICompatibleProvider:
         return headers
 
     async def translate(
-        self, *, text: str, source_lang: str, target_lang: str
+        self,
+        *,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        options: TranslationOptions | None = None,
     ) -> AsyncIterator[str]:
         """Yield content fields from an upstream OpenAI-style SSE response."""
         owns_client = self._client is None
@@ -56,7 +93,7 @@ class OpenAICompatibleProvider:
                 self._settings.chat_url,
                 headers=self._headers(),
                 json=self._request_payload(
-                    text=text, source_lang=source_lang, target_lang=target_lang
+                    text=text, source_lang=source_lang, target_lang=target_lang, options=options
                 ),
             ) as response:
                 if response.status_code != httpx.codes.OK:

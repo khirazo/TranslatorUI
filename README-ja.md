@@ -109,6 +109,11 @@ rm -rf -- .venv
 UI で選択できるのは有効な `openai_compatible` プロバイダーだけです。ACP の設定は TOML に予約できますが、
 プロセス隔離を含む専用アダプターを別途設計・実装するまで UI には表示しません。
 
+各Providerは従来どおりの `model` を使うか、`[[providers.models]]` で複数モデルを定義できます。モデルごとに
+`efforts` と `effort_request_field` を定義した場合だけ、選択したeffortを上流へ送ります。画面の
+「設定を再読み込み」はアプリケーションを再起動せずに `.env` と選択中のTOMLを読み直します。親プロセスの
+環境変数は `.env` より優先され、再読込に失敗しても稼働中の設定は変更されません。
+
 ## Docker Compose
 
 Compose は任意であり、TranslatorUI サービスだけを起動します。

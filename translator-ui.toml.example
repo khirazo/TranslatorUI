@@ -15,6 +15,12 @@ model = "plamo-3-translate-0.8b"
 max_tokens = 512
 translation_profile = "plamo3"
 
+# New registries can expose multiple selectable models. The model id is sent upstream.
+[[providers.models]]
+id = "plamo-3-translate-0.8b"
+name = "PLaMo 3 Translate"
+enabled = true
+
 # A generic OpenAI-compatible service does not receive PLaMo-specific prompt fields.
 [[providers]]
 id = "openai-compatible"
@@ -25,6 +31,19 @@ base_url = "https://api.example.com"
 model = "your-model-id"
 api_key_env = "OPENAI_COMPAT_API_KEY"
 translation_profile = "generic"
+
+[[providers.models]]
+id = "your-model-id"
+name = "Standard"
+enabled = true
+
+[[providers.models]]
+id = "reasoning-model-id"
+name = "Reasoning"
+enabled = false
+efforts = ["low", "medium", "high"]
+default_effort = "medium"
+effort_request_field = "reasoning_effort"
 
 # ACP entries are retained as configuration only until the ACP adapter is implemented.
 [[providers]]

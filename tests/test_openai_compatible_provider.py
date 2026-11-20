@@ -4,9 +4,13 @@ from collections.abc import AsyncIterator
 
 import httpx
 import pytest
-from app.config import ProviderSettings
+from app.config import ProviderSettings, TranslationOptions
 from app.providers.base import TranslationProviderError
-from app.providers.openai_compatible import PLAMO_STOP_TOKENS, OpenAICompatibleProvider
+from app.providers.openai_compatible import (
+    PLAMO_STOP_TOKENS,
+    OpenAICompatibleProvider,
+    build_pfml3_prompt,
+)
 
 
 class ChunkStream(httpx.AsyncByteStream):
@@ -110,11 +114,17 @@ async def test_provider_stops_on_finish_reason_and_sends_plamo_three_payload() -
     assert captured["headers"]["authorization"] == "Bearer secret-key"  # type: ignore[index]
     assert captured["payload"] == {
         "model": "plamo-3-translate-0.8b",
-        "messages": [{"role": "user", "content": "こんにちは"}],
+        "messages": [
+            {
+                "role": "user",
+                "content": build_pfml3_prompt(
+                    text="こんにちは", source_lang="ja", target_lang="en", form=None
+                ),
+            }
+        ],
         "stream": True,
         "temperature": 0,
         "max_tokens": 512,
-        "chat_template_kwargs": {"source_lang": "ja", "target_lang": "en"},
         "stop": PLAMO_STOP_TOKENS,
     }
 
@@ -133,6 +143,27 @@ def test_generic_profile_omits_plamo_specific_prompt_fields() -> None:
         "temperature": 0,
         "max_tokens": 512,
     }
+
+
+@pytest.mark.parametrize("style", ["polite", "plain"])
+def test_plamo_three_sends_japanese_form_in_chat_template_kwargs(style: str) -> None:
+    provider = OpenAICompatibleProvider(provider_settings())
+
+    payload = provider._request_payload(
+        text="hello",
+        source_lang="en",
+        target_lang="ja",
+        options=TranslationOptions(model_id="plamo-3-translate-0.8b", japanese_style=style),
+    )
+
+    assert payload["messages"] == [
+        {
+            "role": "user",
+            "content": build_pfml3_prompt(
+                text="hello", source_lang="en", target_lang="ja", form=style
+            ),
+        }
+    ]
 
 
 @pytest.mark.asyncio

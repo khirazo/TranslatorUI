@@ -8,12 +8,13 @@ import logging
 import time
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from app.config import ProviderSettings, Settings
+from app.config import ProviderSettings, Settings, SettingsStore
 from app.providers.base import TranslationProvider, TranslationProviderError
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.storage import save_text_translation
@@ -49,6 +50,9 @@ class TranslateRequest(BaseModel):
     source_lang: str = "auto"
     target_lang: str = "auto"
     provider_id: str | None = None
+    model_id: str | None = None
+    effort: str | None = None
+    japanese_style: Literal["polite", "plain"] | None = None
 
 
 def _sse(payload: dict[str, object]) -> str:
@@ -82,10 +86,17 @@ async def stream_translation_events(
         return
 
     source_lang, target_lang = language_pair
-    provider_settings = settings.provider_for(payload.provider_id)
-    if provider_settings is None:
-        yield _sse({"error": "The selected translation provider is unavailable."})
+    resolved = settings.resolve_options(
+        payload.provider_id,
+        payload.model_id,
+        payload.effort,
+        payload.japanese_style,
+        payload.target_lang,
+    )
+    if isinstance(resolved, str):
+        yield _sse({"error": resolved})
         return
+    provider_settings, options = resolved
     started_at = time.monotonic()
     first_token_at: float | None = None
     token_count = 0
@@ -94,7 +105,7 @@ async def stream_translation_events(
     try:
         provider = provider_factory(provider_settings)
         translation = provider.translate(
-            text=payload.text, source_lang=source_lang, target_lang=target_lang
+            text=payload.text, source_lang=source_lang, target_lang=target_lang, options=options
         )
         try:
             async for token in translation:
@@ -146,7 +157,8 @@ def create_app(
 ) -> FastAPI:
     """Create an application, allowing tests to substitute its provider boundary."""
     app = FastAPI()
-    app.state.settings = settings or Settings.from_environment()
+    app.state.settings_store = SettingsStore() if settings is None else None
+    app.state.settings = settings or app.state.settings_store.current()[0]
     app.state.provider_factory = provider_factory or OpenAICompatibleProvider
 
     @app.get("/", include_in_schema=False)
@@ -159,16 +171,26 @@ def create_app(
 
     @app.get("/api/providers")
     async def providers() -> JSONResponse:
-        configured_settings: Settings = app.state.settings
-        return JSONResponse(
-            {
-                "default_provider_id": configured_settings.default_provider_id,
-                "providers": [
-                    {"id": provider.id, "name": provider.name}
-                    for provider in configured_settings.selectable_providers
-                ],
-            }
-        )
+        store = app.state.settings_store
+        configured_settings, generation = store.current() if store else (app.state.settings, 1)
+        return JSONResponse(configured_settings.provider_choices(generation))
+
+    @app.post("/api/settings/reload")
+    async def reload_settings() -> JSONResponse:
+        store = app.state.settings_store
+        if store is None:
+            return JSONResponse(
+                {"detail": "Configuration reload failed: unavailable."}, status_code=422
+            )
+        try:
+            configured_settings, generation = store.reload()
+        except Exception:
+            logger.warning("Configuration reload failed")
+            return JSONResponse(
+                {"detail": "Configuration reload failed: invalid configuration."}, status_code=422
+            )
+        app.state.settings = configured_settings
+        return JSONResponse(configured_settings.provider_choices(generation))
 
     @app.post("/api/translate-text")
     async def translate_text(payload: TranslateRequest, request: Request) -> StreamingResponse:
@@ -176,7 +198,11 @@ def create_app(
             stream_translation_events(
                 payload=payload,
                 request=request,
-                settings=request.app.state.settings,
+                settings=(
+                    request.app.state.settings_store.current()[0]
+                    if request.app.state.settings_store
+                    else request.app.state.settings
+                ),
                 provider_factory=request.app.state.provider_factory,
             ),
             media_type="text/event-stream",

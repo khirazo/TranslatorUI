@@ -29,7 +29,9 @@ def test_root_serves_the_python_ui() -> None:
     assert "isAutoMode" not in response.text
     assert "setAutoMode" not in response.text
     assert "translate-pdf" not in response.text
-    assert "provider_id: this.providerId || undefined" in response.text
+    assert "model_id:this.modelId" in response.text
+    assert "japanese_style:this.targetLang === 'ja' ? this.japaneseStyle : null" in response.text
+    assert "設定を再読み込み" in response.text
 
 
 def test_providers_lists_only_enabled_openai_compatible_entries() -> None:
@@ -53,6 +55,32 @@ def test_providers_lists_only_enabled_openai_compatible_entries() -> None:
         response = client.get("/api/providers")
 
     assert response.json() == {
-        "default_provider_id": "second",
-        "providers": [{"id": "first", "name": "First"}, {"id": "second", "name": "Second"}],
+        "generation": 1,
+        "defaults": {"provider_id": "second", "model_id": "second-model", "effort": None},
+        "providers": [
+            {
+                "id": "first",
+                "name": "First",
+                "models": [
+                    {
+                        "id": "first-model",
+                        "name": "first-model",
+                        "efforts": [],
+                        "default_effort": None,
+                    }
+                ],
+            },
+            {
+                "id": "second",
+                "name": "Second",
+                "models": [
+                    {
+                        "id": "second-model",
+                        "name": "second-model",
+                        "efforts": [],
+                        "default_effort": None,
+                    }
+                ],
+            },
+        ],
     }

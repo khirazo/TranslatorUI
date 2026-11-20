@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 
-from app.config import ProviderSettings, Settings
+from app.config import ProviderSettings, Settings, TranslationOptions
 from app.main import TranslateRequest, create_app, stream_translation_events
 from app.providers.base import TranslationProviderError
 from fastapi.testclient import TestClient
@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 class TokenProvider:
     async def translate(
-        self, *, text: str, source_lang: str, target_lang: str
+        self, *, text: str, source_lang: str, target_lang: str, options: TranslationOptions
     ) -> AsyncIterator[str]:
         assert text == "hello"
         assert (source_lang, target_lang) == ("en", "ja")
@@ -18,7 +18,7 @@ class TokenProvider:
 
 class FailingProvider:
     async def translate(
-        self, *, text: str, source_lang: str, target_lang: str
+        self, *, text: str, source_lang: str, target_lang: str, options: TranslationOptions
     ) -> AsyncIterator[str]:
         raise TranslationProviderError("Could not connect to the translation provider.")
         yield ""  # pragma: no cover
@@ -57,7 +57,7 @@ def test_translate_converts_chinese_codes_for_plamo_three() -> None:
 
     class ChineseProvider:
         async def translate(
-            self, *, text: str, source_lang: str, target_lang: str
+            self, *, text: str, source_lang: str, target_lang: str, options: TranslationOptions
         ) -> AsyncIterator[str]:
             received.append((source_lang, target_lang))
             yield "你好"
@@ -150,7 +150,7 @@ async def test_disconnect_closes_provider_without_done_or_error() -> None:
 
     class DelayedProvider:
         async def translate(
-            self, *, text: str, source_lang: str, target_lang: str
+            self, *, text: str, source_lang: str, target_lang: str, options: TranslationOptions
         ) -> AsyncIterator[str]:
             nonlocal provider_closed
             try:

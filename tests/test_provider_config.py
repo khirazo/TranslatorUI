@@ -1,4 +1,4 @@
-from app.config import Settings
+from app.config import Settings, SettingsLoader, SettingsStore
 
 
 def test_toml_provider_registry_loads_secret_from_environment(tmp_path, monkeypatch) -> None:
@@ -52,6 +52,41 @@ def test_missing_explicit_config_file_is_rejected(monkeypatch, tmp_path) -> None
     try:
         Settings.from_environment()
     except ValueError as error:
-        assert "TRANSLATOR_UI_CONFIG does not exist" in str(error)
+        assert str(error) == "The configured provider registry is unavailable."
     else:
         raise AssertionError("An explicit missing config file must be rejected.")
+
+
+def test_settings_store_reloads_a_valid_new_snapshot_and_rolls_back_on_failure(tmp_path) -> None:
+    config_file = tmp_path / "translator-ui.toml"
+    config_file.write_text(
+        """
+[app]
+default_provider = "first"
+
+[[providers]]
+id = "first"
+name = "First"
+base_url = "http://first.test"
+model = "first-model"
+""",
+        encoding="utf-8",
+    )
+    store = SettingsStore(
+        SettingsLoader(
+            environment={"TRANSLATOR_UI_CONFIG": str(config_file)}, env_file=tmp_path / ".env"
+        )
+    )
+    original, generation = store.current()
+
+    config_file.write_text("invalid", encoding="utf-8")
+    try:
+        store.reload()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("An invalid reload must fail.")
+
+    current, current_generation = store.current()
+    assert current == original
+    assert current_generation == generation == 1

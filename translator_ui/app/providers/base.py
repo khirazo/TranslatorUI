@@ -3,6 +3,8 @@
 from collections.abc import AsyncIterator
 from typing import Protocol
 
+from app.config import TranslationOptions
+
 
 class TranslationProviderError(Exception):
     """An expected failure while communicating with a translation provider."""
@@ -11,5 +13,12 @@ class TranslationProviderError(Exception):
 class TranslationProvider(Protocol):
     """Produces translated text fragments for one translation request."""
 
-    def translate(self, *, text: str, source_lang: str, target_lang: str) -> AsyncIterator[str]:
+    def translate(
+        self,
+        *,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        options: TranslationOptions,
+    ) -> AsyncIterator[str]:
         """Yield translated text fragments in their received order."""
