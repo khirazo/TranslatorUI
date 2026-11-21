@@ -41,6 +41,29 @@ GENERIC_LANGUAGE_NAMES = {
 }
 
 
+def boundary_forms(marker: str) -> tuple[str, ...]:
+    """Return common LLM renderings of one generated boundary marker."""
+    return tuple(
+        sorted(
+            (
+                f"{'=' * prefix}{marker}{'=' * suffix}"
+                for prefix in range(2, 5)
+                for suffix in range(2, 5)
+            ),
+            key=len,
+            reverse=True,
+        )
+    )
+
+
+def create_upstream_client() -> httpx.AsyncClient:
+    """Create an HTTPX client that honors standard proxy environment variables."""
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(300.0, connect=10.0),
+        trust_env=True,
+    )
+
+
 def build_pfml3_prompt(*, text: str, source_lang: str, target_lang: str, form: str | None) -> str:
     """Build PLaMo 3 Translate's documented PFML3 translation prompt."""
     token = PLAMO_SPECIAL_TOKENS
@@ -57,8 +80,9 @@ def build_pfml3_prompt(*, text: str, source_lang: str, target_lang: str, form: s
 def generate_translation_boundary(text: str) -> str:
     """Return a per-request delimiter that does not occur in ``text``."""
     while True:
-        boundary = f"===TRANSLATE_BOUNDARY_{secrets.token_hex(12)}==="
-        if boundary not in text:
+        marker = f"TRANSLATE_BOUNDARY_{secrets.token_hex(12)}"
+        boundary = f"==={marker}==="
+        if not any(candidate in text for candidate in boundary_forms(marker)):
             return boundary
 
 
@@ -82,7 +106,9 @@ def build_generic_prompt(
     style_instruction = ""
     if target_lang == "ja":
         style_instruction = (
-            "Use plain Japanese.\n" if form == "plain" else "Use polite Japanese.\n"
+            "Use consistent plain Japanese (da/de aru style) throughout.\n"
+            if form == "plain"
+            else "Use consistent polite Japanese (desu/masu style) throughout.\n"
         )
     return (
         f"Translate the text enclosed by {boundary} from {source_name} to {target_name}.\n"
@@ -101,35 +127,68 @@ def build_generic_prompt(
 
 
 class _BoundaryOutputFilter:
-    """Remove only this request's echoed boundary while preserving streamed content."""
+    """Remove this request's echoed boundary and its separator newlines."""
 
     def __init__(self, boundary: str) -> None:
-        self._boundary = boundary
+        marker = boundary.removeprefix("===").removesuffix("===")
+        self._boundaries = tuple(
+            pattern
+            for form in boundary_forms(marker)
+            for pattern in (f"{form}\r\n", f"\r\n{form}", f"{form}\n", f"\n{form}", form)
+        )
         self._buffer = ""
-        self._prefix_pending = True
 
     def feed(self, text: str) -> str:
         self._buffer += text
-        if self._prefix_pending:
-            if self._boundary.startswith(self._buffer):
-                return ""
-            if self._buffer.startswith(self._boundary):
-                self._buffer = self._buffer[len(self._boundary) :]
-            self._prefix_pending = False
-        if len(self._buffer) <= len(self._boundary):
-            return ""
-        emitted, self._buffer = (
-            self._buffer[: -len(self._boundary)],
-            self._buffer[-len(self._boundary) :],
-        )
-        return emitted
+        return self._drain()
 
     def finish(self) -> str:
-        if self._prefix_pending:
-            return "" if self._buffer == self._boundary else self._buffer
-        if self._buffer.endswith(self._boundary):
-            self._buffer = self._buffer[: -len(self._boundary)]
-        return self._buffer
+        return self._remove_boundaries(self._buffer)
+
+    def _remove_boundaries(self, text: str) -> str:
+        for boundary in self._boundaries:
+            text = text.replace(boundary, "")
+        return text
+
+    def _drain(self) -> str:
+        emitted = ""
+        while self._buffer:
+            matching = [
+                boundary for boundary in self._boundaries if self._buffer.startswith(boundary)
+            ]
+            if matching:
+                self._buffer = self._buffer[len(max(matching, key=len)) :]
+                continue
+
+            positions = [
+                position
+                for boundary in self._boundaries
+                if (position := self._buffer.find(boundary)) >= 0
+            ]
+            if positions:
+                position = min(positions)
+                emitted += self._buffer[:position]
+                self._buffer = self._buffer[position:]
+                continue
+
+            retained = max(
+                (
+                    prefix_length
+                    for boundary in self._boundaries
+                    for prefix_length in range(1, len(boundary))
+                    if self._buffer.endswith(boundary[:prefix_length])
+                ),
+                default=0,
+            )
+            if retained:
+                if retained == len(self._buffer):
+                    return emitted
+                emitted += self._buffer[:-retained]
+                self._buffer = self._buffer[-retained:]
+            else:
+                emitted += self._buffer
+                self._buffer = ""
+        return emitted
 
 
 class OpenAICompatibleProvider:
@@ -193,7 +252,7 @@ class OpenAICompatibleProvider:
     ) -> AsyncIterator[str]:
         """Yield content fields from an upstream OpenAI-style SSE response."""
         owns_client = self._client is None
-        client = self._client or httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
+        client = self._client or create_upstream_client()
         boundary = (
             generate_translation_boundary(text)
             if self._settings.translation_profile == "generic"

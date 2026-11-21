@@ -121,6 +121,22 @@ UI で選択できるのは有効な `openai_compatible` プロバイダーだ�
 ローカルストレージに記憶します。原文・翻訳結果・API キー・接続先・設定値は保存しません。次回起動時は
 現在の設定と照合し、利用できなくなった選択値を安全に既定値へ戻します。
 
+## プロキシー設定
+
+TranslatorUI から OpenAI 互換 LLM への上流要求は、HTTPX の標準プロキシー環境変数
+`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` を使用します。`.env.template` のコメント付き例を
+Git 管理外の `.env` へコピーし、ネットワークに必要な変数だけを設定してください。一般的な HTTP forward
+proxy では、LLM エンドポイント自体が HTTPS でも proxy URL は `http://` を指定します。LM Studio への
+ローカル通信を proxy から除外するには、次を設定します。
+
+```dotenv
+NO_PROXY=localhost,127.0.0.1,::1
+```
+
+proxy URL に資格情報を含める場合、その URL は秘密情報です。実値は `.env` または起動プロセスの環境変数に
+だけ置き、`translator-ui.toml`、文書、ログ、コミットには入れないでください。proxy の挙動と認証の互換性は
+HTTPX および設定した proxy に従います。proxy はプロセス全体に適用され、現在は Provider ごとには選択できません。
+
 ## Docker Compose
 
 Compose は任意であり、TranslatorUI サービスだけを起動します。

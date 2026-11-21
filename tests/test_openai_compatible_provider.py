@@ -2,6 +2,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 
+import app.providers.openai_compatible as openai_compatible
 import httpx
 import pytest
 from app.config import ProviderSettings, TranslationOptions
@@ -12,6 +13,7 @@ from app.providers.openai_compatible import (
     _BoundaryOutputFilter,
     build_generic_prompt,
     build_pfml3_prompt,
+    create_upstream_client,
     generate_translation_boundary,
 )
 
@@ -58,6 +60,23 @@ def provider_settings(**overrides: object) -> ProviderSettings:
 def provider_for(handler: httpx.MockTransport) -> OpenAICompatibleProvider:
     client = httpx.AsyncClient(transport=handler)
     return OpenAICompatibleProvider(provider_settings(), client)
+
+
+def test_owned_upstream_client_explicitly_honors_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    sentinel = object()
+
+    def fake_async_client(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(openai_compatible.httpx, "AsyncClient", fake_async_client)
+
+    assert create_upstream_client() is sentinel
+    assert captured["trust_env"] is True
+    assert captured["timeout"] == httpx.Timeout(300.0, connect=10.0)
 
 
 def test_provider_settings_resolve_default_relative_and_explicit_api_endpoints() -> None:
@@ -153,7 +172,7 @@ def test_generic_profile_sends_a_structured_translation_prompt_without_plamo_fie
         text=text, source_lang="en", target_lang="ja", form=None, boundary=boundary
     )
     assert "from English to Japanese" in content
-    assert "Use polite Japanese." in content
+    assert "Use consistent polite Japanese (desu/masu style) throughout." in content
     assert "Preserve all XML/HTML tags" in content
     assert "including the outermost tags" in content
     assert f"{boundary}\n{text}\n{boundary}" in content
@@ -169,9 +188,9 @@ def test_generic_prompt_uses_plain_japanese_only_for_japanese_targets() -> None:
         text="こんにちは", source_lang="ja", target_lang="en", form="plain", boundary=boundary
     )
 
-    assert "Use plain Japanese." in plain
-    assert "Use plain Japanese." not in english
-    assert "Use polite Japanese." not in english
+    assert "Use consistent plain Japanese (da/de aru style) throughout." in plain
+    assert "Use consistent plain Japanese" not in english
+    assert "Use consistent polite Japanese" not in english
 
 
 def test_translation_boundary_is_unique_to_the_input() -> None:
@@ -182,14 +201,22 @@ def test_translation_boundary_is_unique_to_the_input() -> None:
     assert boundary != "===TRANSLATE_BOUNDARY_deadbeef==="
 
 
-def test_boundary_output_filter_removes_only_its_own_streamed_edges() -> None:
+def test_boundary_output_filter_removes_its_own_streamed_markers() -> None:
     boundary = "===TRANSLATE_BOUNDARY_test==="
     output_filter = _BoundaryOutputFilter(boundary)
-    chunks = [boundary[:12], boundary[12:] + "<b>", "Bonjour</b>", boundary[:10], boundary[10:]]
+    normalized = "==TRANSLATE_BOUNDARY_test=="
+    mixed = "==TRANSLATE_BOUNDARY_test==="
+    chunks = [
+        normalized[:12],
+        normalized[12:] + "\n<b>",
+        "Bonjour</b>" + normalized[:11],
+        normalized[11:] + " world\n" + mixed[:10],
+        mixed[10:],
+    ]
 
     output = "".join(output_filter.feed(chunk) for chunk in chunks) + output_filter.finish()
 
-    assert output == "<b>Bonjour</b>"
+    assert output == "<b>Bonjour</b> world"
 
 
 @pytest.mark.asyncio

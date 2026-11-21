@@ -132,6 +132,23 @@ translations, API keys, endpoints, or configuration values. Saved provider choic
 against the current configuration on the next load; unavailable values fall back safely to the
 current defaults.
 
+## Proxy configuration
+
+TranslatorUI uses the standard HTTPX proxy environment variables for outbound OpenAI-compatible
+LLM requests: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`. Copy the commented examples
+in `.env.template` to the Git-ignored `.env` and set only the variables required by your network.
+For a typical HTTP forward proxy, use an `http://` proxy URL even when the LLM endpoint itself uses
+HTTPS. Keep local LM Studio traffic out of the proxy with:
+
+```dotenv
+NO_PROXY=localhost,127.0.0.1,::1
+```
+
+Proxy URLs may contain credentials, so treat them as secrets: place real values only in `.env` or
+the process environment, never in `translator-ui.toml`, documentation, logs, or commits. Proxy
+behavior and authentication compatibility are provided by HTTPX and the configured proxy. Proxy
+configuration applies process-wide; it cannot currently be selected per provider.
+
 ## Docker Compose
 
 Compose is optional and starts only the TranslatorUI service:
