@@ -25,12 +25,17 @@ def test_root_serves_the_python_ui() -> None:
     assert "PDF翻訳" not in response.text
     assert "sourceLang: 'auto'" not in response.text
     assert "targetLang: 'auto'" not in response.text
+    assert "sourceLang:'en', targetLang:'ja'" in response.text
+    assert "japaneseStyle: 'polite'" in response.text
     assert "code: 'ja-easy'" not in response.text
     assert "isAutoMode" not in response.text
     assert "setAutoMode" not in response.text
     assert "translate-pdf" not in response.text
     assert "model_id:this.modelId" in response.text
     assert "japanese_style:this.targetLang === 'ja' ? this.japaneseStyle : null" in response.text
+    assert "📋" not in response.text
+    assert "❌" not in response.text
+    assert 'stroke="currentColor"' in response.text
     assert "設定を再読み込み" in response.text
 
 
