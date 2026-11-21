@@ -122,6 +122,12 @@ models that declare an `effort_request_field` send that value upstream. The **Re
 button rereads `.env` and the selected TOML without restarting the app. Parent-process environment
 variables override `.env`; failed reloads leave the running configuration unchanged.
 
+The UI remembers the selected provider, model, effort, source and target languages, and Japanese
+writing style in the browser's local storage for this origin. It does not store source text,
+translations, API keys, endpoints, or configuration values. Saved provider choices are validated
+against the current configuration on the next load; unavailable values fall back safely to the
+current defaults.
+
 ## Docker Compose
 
 Compose is optional and starts only the TranslatorUI service:

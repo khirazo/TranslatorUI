@@ -33,6 +33,9 @@ def test_root_serves_the_python_ui() -> None:
     assert "translate-pdf" not in response.text
     assert "model_id:this.modelId" in response.text
     assert "japanese_style:this.targetLang === 'ja' ? this.japaneseStyle : null" in response.text
+    assert "translator-ui.ui-state.v1" in response.text
+    assert "localStorage" in response.text
+    assert "restoreLanguageState" in response.text
     assert "📋" not in response.text
     assert "❌" not in response.text
     assert 'stroke="currentColor"' in response.text
