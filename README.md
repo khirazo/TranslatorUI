@@ -122,6 +122,10 @@ models that declare an `effort_request_field` send that value upstream. The **Re
 button rereads `.env` and the selected TOML without restarting the app. Parent-process environment
 variables override `.env`; failed reloads leave the running configuration unchanged.
 
+The `generic` translation profile sends a model-neutral translation instruction and preserves XML,
+HTML, placeholders, and code structure while translating natural-language text. It does not send
+PLaMo-specific prompt tokens or stop tokens.
+
 The UI remembers the selected provider, model, effort, source and target languages, and Japanese
 writing style in the browser's local storage for this origin. It does not store source text,
 translations, API keys, endpoints, or configuration values. Saved provider choices are validated
