@@ -42,6 +42,9 @@ def test_root_serves_the_python_ui() -> None:
     assert "❌" not in response.text
     assert 'stroke="currentColor"' in response.text
     assert "設定を再読み込み" in response.text
+    assert 'aria-label="通知を閉じる"' in response.text
+    assert "dismissSettingsMessage" in response.text
+    assert "settingsMessage = ''; this.settingsError = false" in response.text
 
 
 def test_providers_lists_only_enabled_openai_compatible_entries() -> None:
