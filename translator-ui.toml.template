@@ -2,58 +2,49 @@
 # Keep API keys in .env and reference only their variable names here.
 
 [app]
-default_provider = "plamo-local"
+default_provider = "openai-compatible"
 save_translations = false
+# Profile writes are opt-in.  When enabled, the GUI writes only this dedicated sidecar TOML.
+allow_profile_writes = false
+# profiles_file = "translator-ui.profiles.toml"
 
 [[providers]]
-id = "plamo-local"
-name = "LM Studio / PLaMo 3"
+id = "openai-compatible"
+name = "OpenAI-compatible local service"
 kind = "openai_compatible"
 enabled = true
 base_url = "http://localhost:1234"
-max_tokens = 512
+# A 4,096-token output cap is a portable default. Model overrides may lower or raise it.
+max_tokens = 4096
 default_translation_profile = "generic"
 
 # Model metadata is separate from the live availability check.  The UI will only offer an id
 # returned by the provider catalog, while these entries choose labels and safe prompt profiles.
+# PLaMo is a model-specific prompt profile, not a separate provider.
 [[providers.model_overrides]]
 id = "plamo-3-translate-0.8b"
 name = "PLaMo 3 Translate"
 translation_profile = "plamo3"
-
-[[providers.model_overrides]]
-id = "microsoft/phi-4-mini-instruct"
-name = "Phi-4 mini"
-
-[[providers.model_overrides]]
-id = "qwen/qwen3-coder-next"
-name = "Qwen3 Coder Next"
+max_tokens = 4096
 
 # Exact overrides take precedence.  Rules are useful for future PLaMo model ids.
 [[providers.model_rules]]
 pattern = "^plamo-"
 translation_profile = "plamo3"
 
-# A generic OpenAI-compatible service does not receive PLaMo-specific prompt fields.
+# Cloud services use the same OpenAI-compatible adapter with their own endpoint and credentials.
 [[providers]]
-id = "openai-compatible"
-name = "OpenAI-compatible service"
+id = "openai"
+name = "OpenAI API"
 kind = "openai_compatible"
 enabled = false
-base_url = "https://api.example.com"
-api_key_env = "OPENAI_COMPAT_API_KEY"
+base_url = "https://api.openai.com"
+api_key_env = "OPENAI_API_KEY"
 translation_profile = "generic"
 
 [[providers.model_overrides]]
-id = "your-model-id"
-name = "Standard"
-
-[[providers.model_overrides]]
-id = "reasoning-model-id"
-name = "Reasoning"
-efforts = ["low", "medium", "high"]
-default_effort = "medium"
-effort_request_field = "reasoning_effort"
+id = "gpt-5.4-mini"
+name = "GPT-5.4 mini"
 
 # ACP entries are retained as configuration only until the ACP adapter is implemented.
 [[providers]]

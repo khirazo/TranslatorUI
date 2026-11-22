@@ -17,6 +17,12 @@ from pydantic import BaseModel
 
 from app.catalog import ProviderCatalogStore
 from app.config import ModelSettings, ProviderSettings, Settings, SettingsStore
+from app.profiles import (
+    ProfileInput,
+    ProfileRevisionConflictError,
+    ProfilesStore,
+    ProfileWriteDisabledError,
+)
 from app.providers.base import TranslationProvider, TranslationProviderError
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.storage import save_text_translation
@@ -55,6 +61,15 @@ class TranslateRequest(BaseModel):
     model_id: str | None = None
     effort: str | None = None
     japanese_style: Literal["polite", "plain"] | None = None
+
+
+class ProfileCreateRequest(BaseModel):
+    revision: str
+    profile: ProfileInput
+
+
+class ProfileDeleteRequest(BaseModel):
+    revision: str
 
 
 def _sse(payload: dict[str, object]) -> str:
@@ -172,6 +187,7 @@ def create_app(
     app.state.catalog_store = ProviderCatalogStore(
         app.state.settings, initial_catalog=settings is not None
     )
+    app.state.profiles_store = ProfilesStore(app.state.settings)
     app.state.provider_factory = provider_factory or OpenAICompatibleProvider
 
     @app.get("/", include_in_schema=False)
@@ -206,9 +222,86 @@ def create_app(
                 {"detail": "Configuration reload failed: invalid configuration."}, status_code=422
             )
         app.state.settings = configured_settings
+        app.state.profiles_store = ProfilesStore(configured_settings)
         catalog, catalog_generation = await app.state.catalog_store.refresh(configured_settings)
         return JSONResponse(
             configured_settings.provider_choices(generation, catalog, catalog_generation)
+        )
+
+    @app.get("/api/profiles")
+    async def profiles(request: Request) -> JSONResponse:
+        try:
+            saved_profiles, revision = request.app.state.profiles_store.current()
+        except (OSError, ValueError):
+            return JSONResponse({"detail": "Profiles could not be read."}, status_code=422)
+        return JSONResponse(
+            {
+                "revision": revision,
+                "writes_enabled": request.app.state.profiles_store.writes_enabled,
+                "profiles": [profile.model_dump() for profile in saved_profiles],
+            }
+        )
+
+    @app.post("/api/profiles", status_code=201)
+    async def create_profile(payload: ProfileCreateRequest, request: Request) -> JSONResponse:
+        language_pair = _validate_language_pair(
+            payload.profile.source_lang, payload.profile.target_lang
+        )
+        if isinstance(language_pair, str):
+            return JSONResponse(
+                {"detail": "Profile language selection is invalid."}, status_code=422
+            )
+        settings_snapshot = (
+            request.app.state.settings_store.current()[0]
+            if request.app.state.settings_store
+            else request.app.state.settings
+        )
+        catalog, _ = request.app.state.catalog_store.current()
+        try:
+            profiles, revision = request.app.state.profiles_store.create(
+                payload.profile, payload.revision, settings_snapshot, catalog
+            )
+        except ProfileWriteDisabledError:
+            return JSONResponse({"detail": "Profile writes are disabled."}, status_code=403)
+        except ProfileRevisionConflictError:
+            return JSONResponse(
+                {"detail": "Profiles changed; reload before saving."}, status_code=409
+            )
+        except (OSError, ValueError):
+            return JSONResponse({"detail": "Profile could not be saved."}, status_code=422)
+        return JSONResponse(
+            {
+                "revision": revision,
+                "writes_enabled": request.app.state.profiles_store.writes_enabled,
+                "profiles": [profile.model_dump() for profile in profiles],
+            },
+            status_code=201,
+        )
+
+    @app.delete("/api/profiles/{profile_id}")
+    async def delete_profile(
+        profile_id: str, payload: ProfileDeleteRequest, request: Request
+    ) -> JSONResponse:
+        try:
+            profiles, revision = request.app.state.profiles_store.delete(
+                profile_id, payload.revision
+            )
+        except ProfileWriteDisabledError:
+            return JSONResponse({"detail": "Profile writes are disabled."}, status_code=403)
+        except ProfileRevisionConflictError:
+            return JSONResponse(
+                {"detail": "Profiles changed; reload before deleting."}, status_code=409
+            )
+        except KeyError:
+            return JSONResponse({"detail": "Profile is unavailable."}, status_code=404)
+        except OSError:
+            return JSONResponse({"detail": "Profile could not be deleted."}, status_code=422)
+        return JSONResponse(
+            {
+                "revision": revision,
+                "writes_enabled": request.app.state.profiles_store.writes_enabled,
+                "profiles": [profile.model_dump() for profile in profiles],
+            }
         )
 
     @app.post("/api/translate-text")

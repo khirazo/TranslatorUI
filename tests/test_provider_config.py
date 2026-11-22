@@ -13,6 +13,7 @@ def test_legacy_config_uses_localhost_by_default() -> None:
     settings = Settings.legacy({})
 
     assert settings.provider_for(None).base_url == "http://localhost:1234"  # type: ignore[union-attr]
+    assert settings.provider_for(None).max_tokens == 4096  # type: ignore[union-attr]
 
 
 def test_toml_provider_registry_loads_secret_from_environment(tmp_path, monkeypatch) -> None:
@@ -21,6 +22,8 @@ def test_toml_provider_registry_loads_secret_from_environment(tmp_path, monkeypa
         """
 [app]
 default_provider = "generic"
+allow_profile_writes = true
+profiles_file = "saved-profiles.toml"
 
 [[providers]]
 id = "plamo"
@@ -55,6 +58,8 @@ command = ["agent", "acp"]
     settings = Settings.from_file(config_file)
 
     assert settings.default_provider_id == "generic"
+    assert settings.allow_profile_writes is True
+    assert settings.profiles_file == config_file.parent / "saved-profiles.toml"
     assert [provider.id for provider in settings.selectable_providers] == ["plamo", "generic"]
     assert settings.provider_for("generic").api_key == "secret"  # type: ignore[union-attr]
     assert settings.provider_for("future-acp") is None
@@ -113,8 +118,10 @@ def test_model_overrides_and_rules_resolve_translation_profiles() -> None:
         base_url="http://localhost:1234",
         translation_profile="generic",
         model_overrides=(
-            ModelSettings(id="plamo-3-translate-0.8b", translation_profile="plamo3"),
-            ModelSettings(id="qwen/qwen3-coder-next"),
+            ModelSettings(
+                id="plamo-3-translate-0.8b", translation_profile="plamo3", max_tokens=2048
+            ),
+            ModelSettings(id="qwen/qwen3-coder-next", max_tokens=8192),
         ),
         model_rules=(ModelRuleSettings(pattern=r"^plamo-", translation_profile="plamo3"),),
     )
@@ -133,6 +140,8 @@ def test_model_overrides_and_rules_resolve_translation_profiles() -> None:
 
     assert plamo.translation_profile == "plamo3"
     assert qwen.translation_profile == "generic"
+    assert plamo.max_tokens == 2048
+    assert qwen.max_tokens == 8192
 
 
 def test_invalid_model_rule_is_rejected() -> None:

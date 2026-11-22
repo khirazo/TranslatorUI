@@ -108,7 +108,7 @@ Return to Windows PowerShell in the repository root and rerun the wrapper:
 
 ## Provider configuration
 
-For multiple providers, copy `translator-ui.toml.example` to `translator-ui.toml` and set
+For multiple providers, copy `translator-ui.toml.template` to `translator-ui.toml` and set
 `TRANSLATOR_UI_CONFIG=translator-ui.toml` in `.env`. Keep API keys in `.env`; TOML contains only
 the environment-variable name, such as `api_key_env = "OPENAI_COMPAT_API_KEY"`.
 
@@ -126,6 +126,16 @@ entry can expose an optional allowlist of `efforts`; only models that declare an
 send that value upstream. The **Reload settings** button rereads
 `.env` and the selected TOML without restarting the app. Parent-process environment
 variables override `.env`; failed reloads leave the running configuration unchanged.
+
+`max_tokens` is an output cap, not a model context-window setting. Its provider default is 4,096;
+set `max_tokens` in a `model_overrides` entry when a specific model needs a different cap. The
+model-specific value takes precedence. Keep the input plus output within the actual context length
+configured by the upstream runtime.
+
+To save named UI selections as profiles, set `allow_profile_writes = true`. TranslatorUI then writes
+only the fixed sidecar `translator-ui.profiles.toml` (or the configured `profiles_file`), never the
+connection TOML or `.env`. Profile writes use a revision check and atomic replacement, so a manual
+edit made after the profile list was loaded is rejected rather than overwritten.
 
 The `generic` translation profile sends a model-neutral translation instruction and preserves XML,
 HTML, placeholders, and code structure while translating natural-language text. It does not send

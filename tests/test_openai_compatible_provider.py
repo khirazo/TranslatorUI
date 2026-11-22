@@ -146,7 +146,7 @@ async def test_provider_stops_on_finish_reason_and_sends_plamo_three_payload() -
         ],
         "stream": True,
         "temperature": 0,
-        "max_tokens": 512,
+        "max_tokens": 4096,
         "stop": PLAMO_STOP_TOKENS,
     }
 
@@ -165,7 +165,7 @@ def test_generic_profile_sends_a_structured_translation_prompt_without_plamo_fie
     assert payload["model"] == "generic-model"
     assert payload["stream"] is True
     assert payload["temperature"] == 0
-    assert payload["max_tokens"] == 512
+    assert payload["max_tokens"] == 4096
     assert "stop" not in payload
     content = payload["messages"][0]["content"]  # type: ignore[index]
     assert content == build_generic_prompt(
@@ -188,10 +188,13 @@ def test_selected_model_profile_overrides_the_provider_default() -> None:
         source_lang="en",
         target_lang="ja",
         boundary=boundary,
-        options=TranslationOptions(model_id="qwen/qwen3-coder-next", translation_profile="generic"),
+        options=TranslationOptions(
+            model_id="qwen/qwen3-coder-next", translation_profile="generic", max_tokens=8192
+        ),
     )
 
     assert payload["model"] == "qwen/qwen3-coder-next"
+    assert payload["max_tokens"] == 8192
     assert "stop" not in payload
     assert payload["messages"] == [
         {

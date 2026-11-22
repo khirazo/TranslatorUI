@@ -28,6 +28,7 @@ class ModelSettings(BaseModel):
     default_effort: str | None = None
     effort_request_field: Literal["reasoning_effort", "effort"] | None = None
     translation_profile: Literal["plamo3", "generic"] | None = None
+    max_tokens: int | None = Field(default=None, gt=0)
 
     @field_validator("id")
     @classmethod
@@ -88,6 +89,7 @@ class ModelRuleSettings(BaseModel):
 class TranslationOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
     model_id: str
+    max_tokens: int = Field(default=4096, gt=0)
     effort: str | None = None
     effort_request_field: Literal["reasoning_effort", "effort"] | None = None
     translation_profile: Literal["plamo3", "generic"] = "plamo3"
@@ -109,7 +111,7 @@ class ProviderSettings(BaseModel):
     chat_endpoint: str = "/v1/chat/completions"
     api_key_env: str | None = None
     api_key: str | None = Field(default=None, repr=False)
-    max_tokens: int = Field(default=512, gt=0)
+    max_tokens: int = Field(default=4096, gt=0)
     translation_profile: Literal["plamo3", "generic"] = Field(
         default="plamo3",
         validation_alias=AliasChoices("translation_profile", "default_translation_profile"),
@@ -190,6 +192,10 @@ class ProviderSettings(BaseModel):
                 return model
         return ModelSettings(id=model_id)
 
+    def max_tokens_for(self, model: ModelSettings) -> int:
+        """Resolve a model-specific output limit before the provider default."""
+        return model.max_tokens or self.max_tokens
+
     @classmethod
     def from_mapping(
         cls, value: Mapping[str, object], environment: Mapping[str, str]
@@ -203,6 +209,8 @@ class ProviderSettings(BaseModel):
 class Settings(BaseModel):
     model_config = ConfigDict(frozen=True)
     save_translations: bool = False
+    allow_profile_writes: bool = False
+    profiles_file: Path | None = None
     default_provider_id: str = "default"
     providers: tuple[ProviderSettings, ...] = Field(
         default_factory=lambda: (
@@ -269,6 +277,7 @@ class Settings(BaseModel):
             return "japanese_style is only supported when target_lang is ja."
         return provider, TranslationOptions(
             model_id=model.id,
+            max_tokens=provider.max_tokens_for(model),
             effort=selected_effort,
             effort_request_field=model.effort_request_field,
             translation_profile=provider.translation_profile_for(model),
@@ -331,7 +340,7 @@ class Settings(BaseModel):
             model_endpoint=values.get("LLM_MODEL_ENDPOINT", "/v1/models"),
             chat_endpoint=values.get("LLM_CHAT_ENDPOINT", "/v1/chat/completions"),
             api_key=values.get("LLM_API_KEY") or None,
-            max_tokens=values.get("LLM_MAX_TOKENS", "512"),
+            max_tokens=values.get("LLM_MAX_TOKENS", "4096"),
         )
         return cls(
             save_translations=values.get("SAVE_TRANSLATIONS", "false"),
@@ -353,9 +362,20 @@ class Settings(BaseModel):
         values = environment or os.environ
         return cls(
             save_translations=app.get("save_translations", False),
+            allow_profile_writes=app.get("allow_profile_writes", False),
+            profiles_file=cls._profiles_file_for(path, app.get("profiles_file")),
             default_provider_id=app.get("default_provider", ""),
             providers=tuple(ProviderSettings.from_mapping(p, values) for p in providers),
         )
+
+    @staticmethod
+    def _profiles_file_for(config_file: Path, configured: object) -> Path:
+        if configured is None:
+            return config_file.with_name("translator-ui.profiles.toml")
+        if not isinstance(configured, str) or not configured.strip():
+            raise ValueError("profiles_file must be a non-empty path")
+        path = Path(configured)
+        return path if path.is_absolute() else config_file.parent / path
 
     @classmethod
     def from_environment(cls) -> Settings:

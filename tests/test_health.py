@@ -45,6 +45,12 @@ def test_root_serves_the_python_ui() -> None:
     assert 'aria-label="通知を閉じる"' in response.text
     assert "dismissSettingsMessage" in response.text
     assert "settingsMessage = ''; this.settingsError = false" in response.text
+    assert "保存済みプロファイル" in response.text
+    assert "saveProfile" in response.text
+    assert "deleteProfile" in response.text
+    assert "translation-settings" in response.text
+    assert "isSettingsExpanded: false" in response.text
+    assert 'aria-controls="translation-settings"' in response.text
 
 
 def test_providers_lists_only_enabled_openai_compatible_entries() -> None:

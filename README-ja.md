@@ -102,7 +102,7 @@ rm -rf -- .venv
 
 ## プロバイダー設定
 
-複数プロバイダーを使う場合は、`translator-ui.toml.example` を `translator-ui.toml` にコピーして、
+複数プロバイダーを使う場合は、`translator-ui.toml.template` を `translator-ui.toml` にコピーして、
 `.env` に `TRANSLATOR_UI_CONFIG=translator-ui.toml` を設定します。API キーは `.env` に置き、TOML には
 `api_key_env = "OPENAI_COMPAT_API_KEY"` のように環境変数名だけを記載します。
 
@@ -117,6 +117,15 @@ UI で選択できるのは有効な `openai_compatible` プロバイダーだ�
 `effort_request_field` を定義した場合だけ、選択したeffortを上流へ送ります。画面の「設定を再読み込み」は
 アプリケーションを再起動せずに `.env` と選択中のTOMLを読み直します。親プロセスの
 環境変数は `.env` より優先され、再読込に失敗しても稼働中の設定は変更されません。
+
+`max_tokens` はモデルの文脈長ではなく出力上限です。Provider の既定値は 4,096 とし、特定モデルだけ
+変更したい場合は `model_overrides` に `max_tokens` を指定します。モデル別の値が優先されます。入力と出力の
+合計は、上流ランタイムで実際に設定された文脈長に収めてください。
+
+名前付きの選択状態を profile として保存するには、`allow_profile_writes = true` を明示します。TranslatorUI は
+接続設定TOMLや `.env` を書き換えず、固定の `translator-ui.profiles.toml`（または `profiles_file`）だけを
+更新します。保存時は revision を照合し、一時ファイルから原子的に置換するため、一覧取得後に手編集された
+profile を上書きしません。
 
 `generic` 翻訳プロファイルは、モデルに依存しない翻訳指示を送り、XML、HTML、プレースホルダー、
 コード構造を保持したまま自然言語部分を翻訳します。PLaMo 専用のプロンプトトークンや stop token は送りません。

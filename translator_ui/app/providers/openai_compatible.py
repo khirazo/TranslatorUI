@@ -231,7 +231,7 @@ class OpenAICompatibleProvider:
             "messages": [{"role": "user", "content": content}],
             "stream": True,
             "temperature": 0,
-            "max_tokens": self._settings.max_tokens,
+            "max_tokens": options.max_tokens if options else self._settings.max_tokens,
         }
         if translation_profile == "plamo3":
             payload["stop"] = PLAMO_STOP_TOKENS
