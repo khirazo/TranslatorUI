@@ -179,6 +179,30 @@ def test_generic_profile_sends_a_structured_translation_prompt_without_plamo_fie
     assert "<|plamo:" not in content
 
 
+def test_selected_model_profile_overrides_the_provider_default() -> None:
+    provider = OpenAICompatibleProvider(provider_settings())
+    boundary = "===TRANSLATE_BOUNDARY_test==="
+
+    payload = provider._request_payload(
+        text="hello",
+        source_lang="en",
+        target_lang="ja",
+        boundary=boundary,
+        options=TranslationOptions(model_id="qwen/qwen3-coder-next", translation_profile="generic"),
+    )
+
+    assert payload["model"] == "qwen/qwen3-coder-next"
+    assert "stop" not in payload
+    assert payload["messages"] == [
+        {
+            "role": "user",
+            "content": build_generic_prompt(
+                text="hello", source_lang="en", target_lang="ja", form=None, boundary=boundary
+            ),
+        }
+    ]
+
+
 def test_generic_prompt_uses_plain_japanese_only_for_japanese_targets() -> None:
     boundary = "===TRANSLATE_BOUNDARY_test==="
     plain = build_generic_prompt(

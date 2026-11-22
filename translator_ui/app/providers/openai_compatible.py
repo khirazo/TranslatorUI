@@ -207,15 +207,18 @@ class OpenAICompatibleProvider:
         options: TranslationOptions | None = None,
         boundary: str | None = None,
     ) -> dict[str, Any]:
+        translation_profile = (
+            options.translation_profile if options else self._settings.translation_profile
+        )
         content = text
-        if self._settings.translation_profile == "plamo3":
+        if translation_profile == "plamo3":
             content = build_pfml3_prompt(
                 text=text,
                 source_lang=source_lang,
                 target_lang=target_lang,
                 form=options.japanese_style if options else None,
             )
-        elif self._settings.translation_profile == "generic":
+        elif translation_profile == "generic":
             content = build_generic_prompt(
                 text=text,
                 source_lang=source_lang,
@@ -230,7 +233,7 @@ class OpenAICompatibleProvider:
             "temperature": 0,
             "max_tokens": self._settings.max_tokens,
         }
-        if self._settings.translation_profile == "plamo3":
+        if translation_profile == "plamo3":
             payload["stop"] = PLAMO_STOP_TOKENS
         if options and options.effort and options.effort_request_field:
             payload[options.effort_request_field] = options.effort
@@ -255,7 +258,8 @@ class OpenAICompatibleProvider:
         client = self._client or create_upstream_client()
         boundary = (
             generate_translation_boundary(text)
-            if self._settings.translation_profile == "generic"
+            if (options.translation_profile if options else self._settings.translation_profile)
+            == "generic"
             else None
         )
         output_filter = _BoundaryOutputFilter(boundary) if boundary else None

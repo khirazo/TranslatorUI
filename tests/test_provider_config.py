@@ -1,4 +1,12 @@
-from app.config import Settings, SettingsLoader, SettingsStore
+import pytest
+from app.config import (
+    ModelRuleSettings,
+    ModelSettings,
+    ProviderSettings,
+    Settings,
+    SettingsLoader,
+    SettingsStore,
+)
 
 
 def test_legacy_config_uses_localhost_by_default() -> None:
@@ -96,3 +104,37 @@ model = "first-model"
     current, current_generation = store.current()
     assert current == original
     assert current_generation == generation == 1
+
+
+def test_model_overrides_and_rules_resolve_translation_profiles() -> None:
+    provider = ProviderSettings(
+        id="lmstudio",
+        name="LM Studio",
+        base_url="http://localhost:1234",
+        translation_profile="generic",
+        model_overrides=(
+            ModelSettings(id="plamo-3-translate-0.8b", translation_profile="plamo3"),
+            ModelSettings(id="qwen/qwen3-coder-next"),
+        ),
+        model_rules=(ModelRuleSettings(pattern=r"^plamo-", translation_profile="plamo3"),),
+    )
+    settings = Settings(default_provider_id="lmstudio", providers=(provider,))
+
+    plamo_resolved = settings.resolve_options(
+        "lmstudio", "plamo-3-translate-0.8b", None, None, "en"
+    )
+    qwen_resolved = settings.resolve_options(
+        "lmstudio", "qwen/qwen3-coder-next", None, None, "en"
+    )
+    assert not isinstance(plamo_resolved, str)
+    assert not isinstance(qwen_resolved, str)
+    _, plamo = plamo_resolved
+    _, qwen = qwen_resolved
+
+    assert plamo.translation_profile == "plamo3"
+    assert qwen.translation_profile == "generic"
+
+
+def test_invalid_model_rule_is_rejected() -> None:
+    with pytest.raises(ValueError, match="model rule pattern"):
+        ModelRuleSettings(pattern="[", translation_profile="generic")

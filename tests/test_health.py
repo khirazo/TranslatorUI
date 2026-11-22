@@ -69,6 +69,7 @@ def test_providers_lists_only_enabled_openai_compatible_entries() -> None:
 
     assert response.json() == {
         "generation": 1,
+        "catalog_generation": 1,
         "defaults": {"provider_id": "second", "model_id": "second-model", "effort": None},
         "providers": [
             {

@@ -11,15 +11,28 @@ name = "LM Studio / PLaMo 3"
 kind = "openai_compatible"
 enabled = true
 base_url = "http://localhost:1234"
-model = "plamo-3-translate-0.8b"
 max_tokens = 512
-translation_profile = "plamo3"
+default_translation_profile = "generic"
 
-# New registries can expose multiple selectable models. The model id is sent upstream.
-[[providers.models]]
+# Model metadata is separate from the live availability check.  The UI will only offer an id
+# returned by the provider catalog, while these entries choose labels and safe prompt profiles.
+[[providers.model_overrides]]
 id = "plamo-3-translate-0.8b"
 name = "PLaMo 3 Translate"
-enabled = true
+translation_profile = "plamo3"
+
+[[providers.model_overrides]]
+id = "microsoft/phi-4-mini-instruct"
+name = "Phi-4 mini"
+
+[[providers.model_overrides]]
+id = "qwen/qwen3-coder-next"
+name = "Qwen3 Coder Next"
+
+# Exact overrides take precedence.  Rules are useful for future PLaMo model ids.
+[[providers.model_rules]]
+pattern = "^plamo-"
+translation_profile = "plamo3"
 
 # A generic OpenAI-compatible service does not receive PLaMo-specific prompt fields.
 [[providers]]
@@ -28,19 +41,16 @@ name = "OpenAI-compatible service"
 kind = "openai_compatible"
 enabled = false
 base_url = "https://api.example.com"
-model = "your-model-id"
 api_key_env = "OPENAI_COMPAT_API_KEY"
 translation_profile = "generic"
 
-[[providers.models]]
+[[providers.model_overrides]]
 id = "your-model-id"
 name = "Standard"
-enabled = true
 
-[[providers.models]]
+[[providers.model_overrides]]
 id = "reasoning-model-id"
 name = "Reasoning"
-enabled = false
 efforts = ["low", "medium", "high"]
 default_effort = "medium"
 effort_request_field = "reasoning_effort"

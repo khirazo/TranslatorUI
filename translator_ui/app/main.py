@@ -7,6 +7,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -14,7 +15,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from app.config import ProviderSettings, Settings, SettingsStore
+from app.catalog import ProviderCatalogStore
+from app.config import ModelSettings, ProviderSettings, Settings, SettingsStore
 from app.providers.base import TranslationProvider, TranslationProviderError
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.storage import save_text_translation
@@ -74,6 +76,7 @@ async def stream_translation_events(
     payload: TranslateRequest,
     request: Request,
     settings: Settings,
+    model_catalog: dict[str, tuple[ModelSettings, ...]] | None,
     provider_factory: Callable[[ProviderSettings], TranslationProvider],
 ) -> AsyncIterator[str]:
     """Produce client-facing SSE events and stop the provider on browser disconnect."""
@@ -92,6 +95,7 @@ async def stream_translation_events(
         payload.effort,
         payload.japanese_style,
         payload.target_lang,
+        model_catalog,
     )
     if isinstance(resolved, str):
         yield _sse({"error": resolved})
@@ -156,9 +160,18 @@ def create_app(
     provider_factory: Callable[[ProviderSettings], TranslationProvider] | None = None,
 ) -> FastAPI:
     """Create an application, allowing tests to substitute its provider boundary."""
-    app = FastAPI()
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        if application.state.settings_store is not None:
+            await application.state.catalog_store.refresh(application.state.settings)
+        yield
+
+    app = FastAPI(lifespan=lifespan)
     app.state.settings_store = SettingsStore() if settings is None else None
     app.state.settings = settings or app.state.settings_store.current()[0]
+    app.state.catalog_store = ProviderCatalogStore(
+        app.state.settings, initial_catalog=settings is not None
+    )
     app.state.provider_factory = provider_factory or OpenAICompatibleProvider
 
     @app.get("/", include_in_schema=False)
@@ -173,7 +186,10 @@ def create_app(
     async def providers() -> JSONResponse:
         store = app.state.settings_store
         configured_settings, generation = store.current() if store else (app.state.settings, 1)
-        return JSONResponse(configured_settings.provider_choices(generation))
+        catalog, catalog_generation = app.state.catalog_store.current()
+        return JSONResponse(
+            configured_settings.provider_choices(generation, catalog, catalog_generation)
+        )
 
     @app.post("/api/settings/reload")
     async def reload_settings() -> JSONResponse:
@@ -190,10 +206,14 @@ def create_app(
                 {"detail": "Configuration reload failed: invalid configuration."}, status_code=422
             )
         app.state.settings = configured_settings
-        return JSONResponse(configured_settings.provider_choices(generation))
+        catalog, catalog_generation = await app.state.catalog_store.refresh(configured_settings)
+        return JSONResponse(
+            configured_settings.provider_choices(generation, catalog, catalog_generation)
+        )
 
     @app.post("/api/translate-text")
     async def translate_text(payload: TranslateRequest, request: Request) -> StreamingResponse:
+        catalog, _ = request.app.state.catalog_store.current()
         return StreamingResponse(
             stream_translation_events(
                 payload=payload,
@@ -203,6 +223,7 @@ def create_app(
                     if request.app.state.settings_store
                     else request.app.state.settings
                 ),
+                model_catalog=catalog,
                 provider_factory=request.app.state.provider_factory,
             ),
             media_type="text/event-stream",

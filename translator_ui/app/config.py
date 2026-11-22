@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Literal
 from urllib.parse import urljoin
 
 from dotenv import dotenv_values
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = REPOSITORY_ROOT / ".env"
@@ -26,6 +27,7 @@ class ModelSettings(BaseModel):
     efforts: tuple[str, ...] = ()
     default_effort: str | None = None
     effort_request_field: Literal["reasoning_effort", "effort"] | None = None
+    translation_profile: Literal["plamo3", "generic"] | None = None
 
     @field_validator("id")
     @classmethod
@@ -61,11 +63,34 @@ class ModelSettings(BaseModel):
         return self.name or self.id
 
 
+class ModelRuleSettings(BaseModel):
+    """A validated model-id rule used when no exact override exists."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    pattern: str
+    translation_profile: Literal["plamo3", "generic"]
+
+    @field_validator("pattern")
+    @classmethod
+    def validate_pattern(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("model rule pattern must not be empty")
+        try:
+            re.compile(value)
+        except re.error as error:
+            raise ValueError("model rule pattern must be a valid regular expression") from error
+        return value
+
+    def matches(self, model_id: str) -> bool:
+        return re.search(self.pattern, model_id) is not None
+
+
 class TranslationOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
     model_id: str
     effort: str | None = None
     effort_request_field: Literal["reasoning_effort", "effort"] | None = None
+    translation_profile: Literal["plamo3", "generic"] = "plamo3"
     japanese_style: Literal["polite", "plain"] | None = None
 
 
@@ -78,12 +103,17 @@ class ProviderSettings(BaseModel):
     base_url: str | None = None
     model: str | None = None
     models: tuple[ModelSettings, ...] = ()
+    model_overrides: tuple[ModelSettings, ...] = ()
+    model_rules: tuple[ModelRuleSettings, ...] = ()
     model_endpoint: str = "/v1/models"
     chat_endpoint: str = "/v1/chat/completions"
     api_key_env: str | None = None
     api_key: str | None = Field(default=None, repr=False)
     max_tokens: int = Field(default=512, gt=0)
-    translation_profile: Literal["plamo3", "generic"] = "plamo3"
+    translation_profile: Literal["plamo3", "generic"] = Field(
+        default="plamo3",
+        validation_alias=AliasChoices("translation_profile", "default_translation_profile"),
+    )
     command: tuple[str, ...] = ()
     timeout_seconds: int = Field(default=180, gt=0)
     mode: str | None = None
@@ -111,9 +141,13 @@ class ProviderSettings(BaseModel):
     @model_validator(mode="after")
     def validate_provider(self) -> ProviderSettings:
         if self.kind == "openai_compatible":
-            if self.base_url is None or (not self.models and not self.model):
-                raise ValueError("openai_compatible providers require base_url and model or models")
-            if len({model.id for model in self.models}) != len(self.models):
+            has_model_metadata = self.models or self.model_overrides or self.model
+            if self.base_url is None or not has_model_metadata:
+                raise ValueError(
+                    "openai_compatible providers require base_url and model metadata"
+                )
+            configured_models = (*self.models, *self.model_overrides)
+            if len({model.id for model in configured_models}) != len(configured_models):
                 raise ValueError("model ids must be unique within a provider")
         return self
 
@@ -133,10 +167,28 @@ class ProviderSettings(BaseModel):
 
     @property
     def selectable_models(self) -> tuple[ModelSettings, ...]:
-        if self.models:
-            return tuple(model for model in self.models if model.enabled)
+        configured_models = (*self.models, *self.model_overrides)
+        if configured_models:
+            return tuple(model for model in configured_models if model.enabled)
         assert self.model is not None
         return (ModelSettings(id=self.model),)
+
+    def translation_profile_for(self, model: ModelSettings) -> Literal["plamo3", "generic"]:
+        """Resolve an exact model override, then ordered rules, then the provider default."""
+        if model.translation_profile is not None:
+            return model.translation_profile
+        for rule in self.model_rules:
+            if rule.matches(model.id):
+                return rule.translation_profile
+        return self.translation_profile
+
+    def model_for_catalog(self, model_id: str) -> ModelSettings:
+        """Merge a live model id with optional TOML metadata."""
+        configured_models = (*self.models, *self.model_overrides)
+        for model in configured_models:
+            if model.id == model_id:
+                return model
+        return ModelSettings(id=model_id)
 
     @classmethod
     def from_mapping(
@@ -188,15 +240,23 @@ class Settings(BaseModel):
         effort: str | None,
         japanese_style: Literal["polite", "plain"] | None,
         target_lang: str,
+        model_catalog: Mapping[str, tuple[ModelSettings, ...]] | None = None,
     ) -> tuple[ProviderSettings, TranslationOptions] | str:
         provider = self.provider_for(provider_id)
         if provider is None:
             return "The selected translation provider is unavailable."
+        available_models = (
+            model_catalog.get(provider.id, ())
+            if model_catalog is not None
+            else provider.selectable_models
+        )
+        if not available_models:
+            return "The selected translation provider has no available models."
         model = next(
             (
                 m
-                for m in provider.selectable_models
-                if m.id == (model_id or provider.selectable_models[0].id)
+                for m in available_models
+                if m.id == (model_id or available_models[0].id)
             ),
             None,
         )
@@ -211,19 +271,30 @@ class Settings(BaseModel):
             model_id=model.id,
             effort=selected_effort,
             effort_request_field=model.effort_request_field,
+            translation_profile=provider.translation_profile_for(model),
             japanese_style=(japanese_style or "polite") if target_lang == "ja" else None,
         )
 
-    def provider_choices(self, generation: int) -> dict[str, object]:
+    def provider_choices(
+        self,
+        generation: int,
+        model_catalog: Mapping[str, tuple[ModelSettings, ...]] | None = None,
+        catalog_generation: int | None = None,
+    ) -> dict[str, object]:
         default = self.provider_for(self.default_provider_id)
         assert default is not None
-        default_model = default.selectable_models[0]
-        return {
+        default_models = (
+            model_catalog.get(default.id, ())
+            if model_catalog is not None
+            else default.selectable_models
+        )
+        default_model = default_models[0] if default_models else None
+        result: dict[str, object] = {
             "generation": generation,
             "defaults": {
                 "provider_id": default.id,
-                "model_id": default_model.id,
-                "effort": default_model.default_effort,
+                "model_id": default_model.id if default_model else None,
+                "effort": default_model.default_effort if default_model else None,
             },
             "providers": [
                 {
@@ -236,12 +307,19 @@ class Settings(BaseModel):
                             "efforts": list(m.efforts),
                             "default_effort": m.default_effort,
                         }
-                        for m in p.selectable_models
+                        for m in (
+                            model_catalog.get(p.id, ())
+                            if model_catalog is not None
+                            else p.selectable_models
+                        )
                     ],
                 }
                 for p in self.selectable_providers
             ],
         }
+        if catalog_generation is not None:
+            result["catalog_generation"] = catalog_generation
+        return result
 
     @classmethod
     def legacy(cls, values: Mapping[str, str]) -> Settings:

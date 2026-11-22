@@ -116,10 +116,15 @@ Only enabled `openai_compatible` providers are available in the UI. ACP entries 
 TOML but remain unavailable until a separately designed adapter with process-isolation safeguards
 is implemented.
 
-Each provider may retain its legacy `model` field, or define one or more
-`[[providers.models]]` entries. A model entry can expose an optional allowlist of `efforts`; only
-models that declare an `effort_request_field` send that value upstream. The **Reload settings**
-button rereads `.env` and the selected TOML without restarting the app. Parent-process environment
+Each provider may retain its legacy `model` field and add one or more
+`[[providers.model_overrides]]` entries. An override supplies a display name and, where needed, a
+model-specific `translation_profile` such as `plamo3`; ordered `[[providers.model_rules]]` entries
+provide a validated regular-expression fallback. Exact overrides take precedence over rules, then
+the provider default. At startup and after **Reload settings**, the UI refreshes the provider's
+`/v1/models` catalog and offers only currently reported IDs, enriched by that TOML metadata. A model
+entry can expose an optional allowlist of `efforts`; only models that declare an `effort_request_field`
+send that value upstream. The **Reload settings** button rereads
+`.env` and the selected TOML without restarting the app. Parent-process environment
 variables override `.env`; failed reloads leave the running configuration unchanged.
 
 The `generic` translation profile sends a model-neutral translation instruction and preserves XML,

@@ -165,6 +165,7 @@ async def test_disconnect_closes_provider_without_done_or_error() -> None:
             payload=TranslateRequest(text="hello", source_lang="en", target_lang="ja"),
             request=DisconnectingRequest(),  # type: ignore[arg-type]
             settings=Settings(),
+            model_catalog=None,
             provider_factory=lambda settings: DelayedProvider(),
         )
     ]

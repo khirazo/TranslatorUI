@@ -109,9 +109,13 @@ rm -rf -- .venv
 UI で選択できるのは有効な `openai_compatible` プロバイダーだけです。ACP の設定は TOML に予約できますが、
 プロセス隔離を含む専用アダプターを別途設計・実装するまで UI には表示しません。
 
-各Providerは従来どおりの `model` を使うか、`[[providers.models]]` で複数モデルを定義できます。モデルごとに
-`efforts` と `effort_request_field` を定義した場合だけ、選択したeffortを上流へ送ります。画面の
-「設定を再読み込み」はアプリケーションを再起動せずに `.env` と選択中のTOMLを読み直します。親プロセスの
+各Providerは従来どおりの `model` を残したまま、`[[providers.model_overrides]]` で複数モデルの表示名と
+モデル固有の `translation_profile`（例: `plamo3`）を定義できます。順序付きの
+`[[providers.model_rules]]` は検証済み正規表現による補完規則であり、個別上書き、規則、Provider既定値の順に
+適用されます。起動時と「設定を再読み込み」後に Provider の `/v1/models` を照会し、その時点で報告された
+モデル ID だけを、このTOML metadata と合成してUIへ表示します。モデルごとに `efforts` と
+`effort_request_field` を定義した場合だけ、選択したeffortを上流へ送ります。画面の「設定を再読み込み」は
+アプリケーションを再起動せずに `.env` と選択中のTOMLを読み直します。親プロセスの
 環境変数は `.env` より優先され、再読込に失敗しても稼働中の設定は変更されません。
 
 `generic` 翻訳プロファイルは、モデルに依存しない翻訳指示を送り、XML、HTML、プレースホルダー、
