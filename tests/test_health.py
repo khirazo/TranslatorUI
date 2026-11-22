@@ -64,7 +64,8 @@ def test_stylesheet_is_served_locally() -> None:
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/css")
-    assert "Tailwind CDN" in response.text
+    assert "--color-primary" in response.text
+    assert ".translation-grid" in response.text
 
 
 def test_providers_lists_only_enabled_openai_compatible_entries() -> None:

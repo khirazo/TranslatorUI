@@ -10,65 +10,65 @@
 </head>
 <body>
   <main id="app" class="app-shell">
-    <header class="app-header mb-6 text-center"><h1 class="mb-2 text-4xl font-bold text-blue-600">TranslatorUI</h1><p class="text-gray-600">LLM による逐次テキスト翻訳</p></header>
-    <section class="settings-panel mb-5 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <button type="button" @click="isSettingsExpanded = !isSettingsExpanded" :aria-expanded="isSettingsExpanded" aria-controls="translation-settings" class="settings-toggle flex w-full flex-wrap items-center justify-between gap-2 text-left hover:text-blue-700">
-        <span class="font-semibold text-gray-800">翻訳設定</span>
-        <span class="flex items-center gap-2 text-sm font-normal text-gray-600"><span>{{ selectedProvider?.name || 'Provider を読み込み中' }} / {{ selectedModel?.name || 'Model を読み込み中' }}</span><span aria-hidden="true">{{ isSettingsExpanded ? '▾' : '▸' }}</span></span>
+    <header class="app-header"><h1 class="app-title">TranslatorUI</h1><p class="app-subtitle">LLM による逐次テキスト翻訳</p></header>
+    <section class="settings-panel">
+      <button type="button" @click="isSettingsExpanded = !isSettingsExpanded" :aria-expanded="isSettingsExpanded" aria-controls="translation-settings" class="settings-toggle">
+        <span class="settings-title">翻訳設定</span>
+        <span class="settings-summary"><span>{{ selectedProvider?.name || 'Provider を読み込み中' }} / {{ selectedModel?.name || 'Model を読み込み中' }}</span><span class="settings-chevron" aria-hidden="true">{{ isSettingsExpanded ? '▾' : '▸' }}</span></span>
       </button>
-      <div v-if="isSettingsExpanded" id="translation-settings" class="mt-4">
-        <div class="flex flex-wrap items-end gap-3">
-          <label class="flex min-w-40 flex-1 flex-col gap-1 text-sm font-semibold text-gray-700">Provider
-            <select v-model="providerId" @change="selectProvider" :disabled="isTranslating || isReloading" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal"><option v-for="provider in providers" :key="provider.id" :value="provider.id">{{ provider.name }}</option></select>
+      <div v-if="isSettingsExpanded" id="translation-settings" class="settings-content">
+        <div class="settings-controls">
+          <label class="field">Provider
+            <select v-model="providerId" @change="selectProvider" :disabled="isTranslating || isReloading"><option v-for="provider in providers" :key="provider.id" :value="provider.id">{{ provider.name }}</option></select>
           </label>
-          <label class="flex min-w-40 flex-1 flex-col gap-1 text-sm font-semibold text-gray-700">Model
-            <select v-model="modelId" @change="selectModel" :disabled="isTranslating || isReloading" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal"><option v-for="model in selectedProvider?.models || []" :key="model.id" :value="model.id">{{ model.name }}</option></select>
+          <label class="field">Model
+            <select v-model="modelId" @change="selectModel" :disabled="isTranslating || isReloading"><option v-for="model in selectedProvider?.models || []" :key="model.id" :value="model.id">{{ model.name }}</option></select>
           </label>
-          <label class="flex min-w-32 flex-1 flex-col gap-1 text-sm font-semibold text-gray-700">Effort
-            <select v-model="effort" @change="selectionChanged" :disabled="isTranslating || isReloading || !(selectedModel?.efforts || []).length" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal"><option v-if="!(selectedModel?.efforts || []).length" :value="null">未対応</option><option v-for="item in selectedModel?.efforts || []" :key="item" :value="item">{{ item }}</option></select>
+          <label class="field field-compact">Effort
+            <select v-model="effort" @change="selectionChanged" :disabled="isTranslating || isReloading || !(selectedModel?.efforts || []).length"><option v-if="!(selectedModel?.efforts || []).length" :value="null">未対応</option><option v-for="item in selectedModel?.efforts || []" :key="item" :value="item">{{ item }}</option></select>
           </label>
-          <button @click="reloadSettings" :disabled="isReloading || isTranslating" class="rounded-md border border-blue-500 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400">{{ isReloading ? '再読込中…' : '設定を再読み込み' }}</button>
+          <button @click="reloadSettings" :disabled="isReloading || isTranslating" class="button button-secondary">{{ isReloading ? '再読込中…' : '設定を再読み込み' }}</button>
         </div>
-        <div class="mt-3 flex flex-wrap items-end gap-3 border-t border-gray-200 pt-3">
-          <label class="flex min-w-40 flex-1 flex-col gap-1 text-sm font-semibold text-gray-700">保存済みプロファイル
-            <select v-model="profileId" @change="applyProfile" :disabled="isTranslating || isReloading || !profiles.length" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal"><option value="">選択してください</option><option v-for="profile in profiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option></select>
+        <div class="profile-controls">
+          <label class="field">保存済みプロファイル
+            <select v-model="profileId" @change="applyProfile" :disabled="isTranslating || isReloading || !profiles.length"><option value="">選択してください</option><option v-for="profile in profiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option></select>
           </label>
-          <label v-if="profileWritesEnabled" class="flex min-w-40 flex-1 flex-col gap-1 text-sm font-semibold text-gray-700">プロファイル名
-            <input v-model="profileName" :disabled="isTranslating || isReloading" placeholder="例: Qwen・英日・常体" class="rounded-md border border-gray-300 px-3 py-2 font-normal">
+          <label v-if="profileWritesEnabled" class="field">プロファイル名
+            <input v-model="profileName" :disabled="isTranslating || isReloading" placeholder="例: Qwen・英日・常体">
           </label>
-          <button v-if="profileWritesEnabled" @click="saveProfile" :disabled="isTranslating || isReloading || !profileName.trim()" class="rounded-md border border-blue-500 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400">保存</button>
-          <button v-if="profileWritesEnabled" @click="deleteProfile" :disabled="isTranslating || isReloading || !profileId" class="rounded-md border border-red-400 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400">削除</button>
+          <button v-if="profileWritesEnabled" @click="saveProfile" :disabled="isTranslating || isReloading || !profileName.trim()" class="button button-secondary">保存</button>
+          <button v-if="profileWritesEnabled" @click="deleteProfile" :disabled="isTranslating || isReloading || !profileId" class="button button-danger">削除</button>
         </div>
       </div>
-      <p v-if="profileError" class="mt-3 text-sm text-red-700" role="alert">{{ profileError }}</p>
-      <div v-if="settingsMessage" :role="settingsError ? 'alert' : 'status'" :class="settingsError ? 'text-red-700' : 'text-green-700'" class="mt-3 flex items-center justify-between gap-3 text-sm">
+      <p v-if="profileError" class="status-message status-error" role="alert">{{ profileError }}</p>
+      <div v-if="settingsMessage" :role="settingsError ? 'alert' : 'status'" :class="settingsError ? 'status-error' : 'status-success'" class="status-message status-dismissible">
         <p>{{ settingsMessage }}</p>
-        <button type="button" @click="dismissSettingsMessage" aria-label="通知を閉じる" title="閉じる" class="shrink-0 text-lg leading-none hover:text-gray-900">×</button>
+        <button type="button" @click="dismissSettingsMessage" aria-label="通知を閉じる" title="閉じる" class="dismiss-button">×</button>
       </div>
     </section>
-    <section class="mb-6 flex flex-wrap items-end justify-center gap-3">
-      <label class="flex flex-col gap-1 text-sm font-semibold text-gray-700">原文言語
-        <select v-model="sourceLang" @change="selectionChanged" :disabled="isTranslating" class="rounded-md border border-blue-500 bg-blue-500 px-3 py-2 font-normal text-white shadow-sm hover:bg-blue-600 disabled:cursor-not-allowed disabled:border-gray-400 disabled:bg-gray-400"><option v-for="item in languages" :key="item.code" :value="item.code">{{ item.flag }} {{ item.name }}</option></select>
+    <section class="language-controls">
+      <label class="language-field">原文言語
+        <select v-model="sourceLang" @change="selectionChanged" :disabled="isTranslating" class="language-select"><option v-for="item in languages" :key="item.code" :value="item.code">{{ item.flag }} {{ item.name }}</option></select>
       </label>
-      <button @click="swapAll" :disabled="isTranslating" title="言語とテキストを入れ替える" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-xl text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400">⇄</button>
-      <label class="flex flex-col gap-1 text-sm font-semibold text-gray-700">訳文言語
-        <select v-model="targetLang" @change="updateStyle" :disabled="isTranslating" class="rounded-md border border-blue-500 bg-blue-500 px-3 py-2 font-normal text-white shadow-sm hover:bg-blue-600 disabled:cursor-not-allowed disabled:border-gray-400 disabled:bg-gray-400"><option v-for="item in languages" :key="item.code" :value="item.code">{{ item.flag }} {{ item.name }}</option></select>
+      <button @click="swapAll" :disabled="isTranslating" title="言語とテキストを入れ替える" class="button button-icon">⇄</button>
+      <label class="language-field">訳文言語
+        <select v-model="targetLang" @change="updateStyle" :disabled="isTranslating" class="language-select"><option v-for="item in languages" :key="item.code" :value="item.code">{{ item.flag }} {{ item.name }}</option></select>
       </label>
-      <label v-if="targetLang === 'ja'" class="flex flex-col gap-1 text-sm font-semibold text-gray-700">文体
-        <select v-model="japaneseStyle" @change="selectionChanged" :disabled="isTranslating" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"><option value="polite">敬体（です・ます調）</option><option value="plain">常体（だ・である調）</option></select>
+      <label v-if="targetLang === 'ja'" class="language-field">文体
+        <select v-model="japaneseStyle" @change="selectionChanged" :disabled="isTranslating" class="select-control"><option value="polite">敬体（です・ます調）</option><option value="plain">常体（だ・である調）</option></select>
       </label>
     </section>
-    <p v-if="clipboardError" class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ clipboardError }}</p>
-    <section class="grid gap-6 md:grid-cols-2">
-      <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-md">
-        <div class="mb-3 flex items-center justify-between"><h2 class="text-lg font-semibold text-gray-800">{{ language(sourceLang).flag }} {{ language(sourceLang).name }}</h2><div class="flex gap-2"><button @click="copyText(inputText, 'input')" :disabled="!inputText" title="コピー" :class="copiedInput ? 'text-green-500' : 'text-gray-500 hover:text-gray-800'" class="text-lg disabled:text-gray-300">⧉</button><button @click="clearInput" :disabled="isTranslating || !inputText" title="クリア" class="text-gray-500 hover:text-gray-800 disabled:text-gray-300"><svg aria-hidden="true" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
-        <textarea v-model="inputText" :disabled="isTranslating" :placeholder="`${language(sourceLang).name}を入力してください…`" class="min-h-64 w-full resize-y rounded-md border border-gray-300 p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-        <button @click="translateText" :disabled="isTranslating || !inputText.trim()" class="mt-4 w-full rounded-md bg-blue-500 px-4 py-3 font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-400">{{ isTranslating ? '翻訳中…' : '翻訳する' }}</button>
+    <p v-if="clipboardError" class="status-message status-error clipboard-message">{{ clipboardError }}</p>
+    <section class="translation-grid">
+      <div class="translation-panel">
+        <div class="panel-header"><h2 class="panel-title">{{ language(sourceLang).flag }} {{ language(sourceLang).name }}</h2><div class="panel-actions"><button @click="copyText(inputText, 'input')" :disabled="!inputText" title="コピー" :class="{ 'is-copied': copiedInput }" class="icon-button">⧉</button><button @click="clearInput" :disabled="isTranslating || !inputText" title="クリア" class="icon-button"><svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
+        <textarea v-model="inputText" :disabled="isTranslating" :placeholder="`${language(sourceLang).name}を入力してください…`" class="translation-input"></textarea>
+        <button @click="translateText" :disabled="isTranslating || !inputText.trim()" class="button button-primary translate-button">{{ isTranslating ? '翻訳中…' : '翻訳する' }}</button>
       </div>
-      <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-md">
-        <div class="mb-3 flex items-center justify-between"><h2 class="text-lg font-semibold text-gray-800">{{ language(targetLang).flag }} {{ language(targetLang).name }}</h2><div class="flex gap-2"><button @click="copyText(outputText, 'output')" :disabled="!outputText" title="コピー" :class="copiedOutput ? 'text-green-500' : 'text-gray-500 hover:text-gray-800'" class="text-lg disabled:text-gray-300">⧉</button><button @click="clearOutput" :disabled="isTranslating || !outputText" title="クリア" class="text-gray-500 hover:text-gray-800 disabled:text-gray-300"><svg aria-hidden="true" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
-        <div class="min-h-64 whitespace-pre-wrap rounded-md border border-gray-300 bg-gray-50 p-3 text-gray-800"><span v-if="outputText">{{ outputText }}</span><span v-else class="text-gray-400">翻訳結果がここに表示されます</span></div>
-        <button v-if="isTranslating" @click="stopText" class="mt-4 w-full rounded-md bg-red-500 px-4 py-3 font-medium text-white hover:bg-red-600">中止する</button><p v-if="error" class="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>
+      <div class="translation-panel">
+        <div class="panel-header"><h2 class="panel-title">{{ language(targetLang).flag }} {{ language(targetLang).name }}</h2><div class="panel-actions"><button @click="copyText(outputText, 'output')" :disabled="!outputText" title="コピー" :class="{ 'is-copied': copiedOutput }" class="icon-button">⧉</button><button @click="clearOutput" :disabled="isTranslating || !outputText" title="クリア" class="icon-button"><svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
+        <div class="translation-output"><span v-if="outputText">{{ outputText }}</span><span v-else class="output-placeholder">翻訳結果がここに表示されます</span></div>
+        <button v-if="isTranslating" @click="stopText" class="button button-danger stop-button">中止する</button><p v-if="error" class="status-message status-error translation-error">{{ error }}</p>
       </div>
     </section>
   </main>
