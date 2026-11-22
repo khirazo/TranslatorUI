@@ -87,7 +87,7 @@ if [ ! -f "$env_path" ]; then
         exit 1
     fi
     echo "Creating $env_path from .env.template for local Uvicorn execution."
-    sed 's|^LLM_ENDPOINT=http://host\.docker\.internal:1234$|LLM_ENDPOINT=http://localhost:1234|' "$env_template_path" > "$env_path"
+    cp "$env_template_path" "$env_path"
     echo "Warning: review $env_path and set LLM_MODEL to the model ID published by your LLM server." >&2
 fi
 

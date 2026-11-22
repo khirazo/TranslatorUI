@@ -1,6 +1,12 @@
 from app.config import Settings, SettingsLoader, SettingsStore
 
 
+def test_legacy_config_uses_localhost_by_default() -> None:
+    settings = Settings.legacy({})
+
+    assert settings.provider_for(None).base_url == "http://localhost:1234"  # type: ignore[union-attr]
+
+
 def test_toml_provider_registry_loads_secret_from_environment(tmp_path, monkeypatch) -> None:
     config_file = tmp_path / "translator-ui.toml"
     config_file.write_text(

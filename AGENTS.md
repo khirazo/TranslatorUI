@@ -18,7 +18,6 @@ or copy credentials from it into source code, logs, or documentation.
 
 - `translator_ui/`: FastAPI text-translation service.
 - `docs/`: public documentation assets.
-- `compose.yml`: local multi-service development configuration.
 - `work/`: local-only notes and scratch files; do not commit its contents.
 
 ## Development conventions
@@ -32,9 +31,8 @@ or copy credentials from it into source code, logs, or documentation.
 
 ## Local services
 
-Use `docker compose up -d translator-ui` to start the optional containerized service. The FastAPI
-service health endpoint is `http://localhost:4568/health`; normal local use prefers the start
-wrappers and uv. See `work/DESIGN-CHECKPOINT.md` for the implementation contract.
+Use the start wrappers and uv for local service execution. The FastAPI service health endpoint is
+`http://localhost:4568/health`. See `work/DESIGN-CHECKPOINT.md` for the implementation contract.
 
 ## Local-only instructions
 

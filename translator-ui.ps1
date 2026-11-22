@@ -84,12 +84,7 @@ if (-not (Test-Path $envPath)) {
         throw "Environment template file was not found: $envTemplatePath"
     }
     Write-Host "Creating $envPath from .env.template for local Uvicorn execution."
-    $envContents = Get-Content -LiteralPath $envTemplatePath -Raw
-    $envContents = $envContents.Replace(
-        "LLM_ENDPOINT=http://host.docker.internal:1234",
-        "LLM_ENDPOINT=http://localhost:1234"
-    )
-    Set-Content -LiteralPath $envPath -Value $envContents -Encoding utf8
+    Copy-Item -LiteralPath $envTemplatePath -Destination $envPath
     Write-Warning "Review $envPath and set LLM_MODEL to the model ID published by your LLM server."
 }
 

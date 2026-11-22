@@ -157,7 +157,7 @@ class Settings(BaseModel):
             ProviderSettings(
                 id="default",
                 name="Default provider",
-                base_url="http://host.docker.internal:1234",
+                base_url="http://localhost:1234",
                 model="plamo-3-translate-0.8b",
             ),
         )
@@ -248,7 +248,7 @@ class Settings(BaseModel):
         provider = ProviderSettings(
             id="default",
             name="Default provider",
-            base_url=values.get("LLM_ENDPOINT", "http://host.docker.internal:1234"),
+            base_url=values.get("LLM_ENDPOINT", "http://localhost:1234"),
             model=values.get("LLM_MODEL", "plamo-3-translate-0.8b"),
             model_endpoint=values.get("LLM_MODEL_ENDPOINT", "/v1/models"),
             chat_endpoint=values.get("LLM_CHAT_ENDPOINT", "/v1/chat/completions"),

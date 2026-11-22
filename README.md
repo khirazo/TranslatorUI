@@ -149,17 +149,6 @@ the process environment, never in `translator-ui.toml`, documentation, logs, or 
 behavior and authentication compatibility are provided by HTTPX and the configured proxy. Proxy
 configuration applies process-wide; it cannot currently be selected per provider.
 
-## Docker Compose
-
-Compose is optional and starts only the TranslatorUI service:
-
-```bash
-docker compose up -d translator-ui
-```
-
-The TOML path in `TRANSLATOR_UI_CONFIG` identifies the host file; Compose mounts it read-only at
-`/app/translator-ui.toml`. Create the TOML file before starting Compose.
-
 ## Verify
 
 ```bash

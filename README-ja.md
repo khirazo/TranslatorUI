@@ -137,17 +137,6 @@ proxy URL に資格情報を含める場合、その URL は秘密情報です�
 だけ置き、`translator-ui.toml`、文書、ログ、コミットには入れないでください。proxy の挙動と認証の互換性は
 HTTPX および設定した proxy に従います。proxy はプロセス全体に適用され、現在は Provider ごとには選択できません。
 
-## Docker Compose
-
-Compose は任意であり、TranslatorUI サービスだけを起動します。
-
-```bash
-docker compose up -d translator-ui
-```
-
-`TRANSLATOR_UI_CONFIG` のパスはホスト上の TOML ファイルを指します。Compose はこれをコンテナー内の
-`/app/translator-ui.toml` に読み取り専用でマウントするため、起動前に TOML を作成してください。
-
 ## 確認
 
 ```bash
