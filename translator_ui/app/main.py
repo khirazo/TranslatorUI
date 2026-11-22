@@ -13,6 +13,7 @@ from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.catalog import ProviderCatalogStore
@@ -175,6 +176,7 @@ def create_app(
     provider_factory: Callable[[ProviderSettings], TranslationProvider] | None = None,
 ) -> FastAPI:
     """Create an application, allowing tests to substitute its provider boundary."""
+
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if application.state.settings_store is not None:
@@ -189,6 +191,7 @@ def create_app(
     )
     app.state.profiles_store = ProfilesStore(app.state.settings)
     app.state.provider_factory = provider_factory or OpenAICompatibleProvider
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:

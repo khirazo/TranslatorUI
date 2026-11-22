@@ -22,6 +22,8 @@ def test_root_serves_the_python_ui() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert "TranslatorUI" in response.text
+    assert 'href="/static/styles.css"' in response.text
+    assert "tailwindcss" not in response.text
     assert "PDF翻訳" not in response.text
     assert "sourceLang: 'auto'" not in response.text
     assert "targetLang: 'auto'" not in response.text
@@ -48,9 +50,21 @@ def test_root_serves_the_python_ui() -> None:
     assert "保存済みプロファイル" in response.text
     assert "saveProfile" in response.text
     assert "deleteProfile" in response.text
+    assert "selectionChanged() { this.profileId = ''; this.persistUiState(); }" in response.text
     assert "translation-settings" in response.text
     assert "isSettingsExpanded: false" in response.text
     assert 'aria-controls="translation-settings"' in response.text
+
+
+def test_stylesheet_is_served_locally() -> None:
+    app = create_app(settings=Settings())
+
+    with TestClient(app) as client:
+        response = client.get("/static/styles.css")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/css")
+    assert "Tailwind CDN" in response.text
 
 
 def test_providers_lists_only_enabled_openai_compatible_entries() -> None:

@@ -1,5 +1,6 @@
 .env
 /translator-ui.toml
+/translator-ui.profiles.toml
 /data/
 
 # Python virtual environments, bytecode, test caches, and build artifacts.

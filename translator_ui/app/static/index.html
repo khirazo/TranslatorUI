@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TranslatorUI</title>
   <link rel="icon" href="data:,">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/styles.css">
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
-<body class="bg-gray-50">
-  <main id="app" class="mx-auto min-h-screen max-w-5xl px-4 py-8">
-    <header class="mb-6 text-center"><h1 class="mb-2 text-4xl font-bold text-blue-600">TranslatorUI</h1><p class="text-gray-600">LLM による逐次テキスト翻訳</p></header>
-    <section class="mb-5 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <button type="button" @click="isSettingsExpanded = !isSettingsExpanded" :aria-expanded="isSettingsExpanded" aria-controls="translation-settings" class="flex w-full flex-wrap items-center justify-between gap-2 text-left hover:text-blue-700">
+<body>
+  <main id="app" class="app-shell">
+    <header class="app-header mb-6 text-center"><h1 class="mb-2 text-4xl font-bold text-blue-600">TranslatorUI</h1><p class="text-gray-600">LLM による逐次テキスト翻訳</p></header>
+    <section class="settings-panel mb-5 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <button type="button" @click="isSettingsExpanded = !isSettingsExpanded" :aria-expanded="isSettingsExpanded" aria-controls="translation-settings" class="settings-toggle flex w-full flex-wrap items-center justify-between gap-2 text-left hover:text-blue-700">
         <span class="font-semibold text-gray-800">翻訳設定</span>
         <span class="flex items-center gap-2 text-sm font-normal text-gray-600"><span>{{ selectedProvider?.name || 'Provider を読み込み中' }} / {{ selectedModel?.name || 'Model を読み込み中' }}</span><span aria-hidden="true">{{ isSettingsExpanded ? '▾' : '▸' }}</span></span>
       </button>
@@ -25,7 +25,7 @@
             <select v-model="modelId" @change="selectModel" :disabled="isTranslating || isReloading" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal"><option v-for="model in selectedProvider?.models || []" :key="model.id" :value="model.id">{{ model.name }}</option></select>
           </label>
           <label class="flex min-w-32 flex-1 flex-col gap-1 text-sm font-semibold text-gray-700">Effort
-            <select v-model="effort" @change="persistUiState" :disabled="isTranslating || isReloading || !(selectedModel?.efforts || []).length" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal"><option v-if="!(selectedModel?.efforts || []).length" :value="null">未対応</option><option v-for="item in selectedModel?.efforts || []" :key="item" :value="item">{{ item }}</option></select>
+            <select v-model="effort" @change="selectionChanged" :disabled="isTranslating || isReloading || !(selectedModel?.efforts || []).length" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal"><option v-if="!(selectedModel?.efforts || []).length" :value="null">未対応</option><option v-for="item in selectedModel?.efforts || []" :key="item" :value="item">{{ item }}</option></select>
           </label>
           <button @click="reloadSettings" :disabled="isReloading || isTranslating" class="rounded-md border border-blue-500 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400">{{ isReloading ? '再読込中…' : '設定を再読み込み' }}</button>
         </div>
@@ -48,14 +48,14 @@
     </section>
     <section class="mb-6 flex flex-wrap items-end justify-center gap-3">
       <label class="flex flex-col gap-1 text-sm font-semibold text-gray-700">原文言語
-        <select v-model="sourceLang" @change="persistUiState" :disabled="isTranslating" class="rounded-md border border-blue-500 bg-blue-500 px-3 py-2 font-normal text-white shadow-sm hover:bg-blue-600 disabled:cursor-not-allowed disabled:border-gray-400 disabled:bg-gray-400"><option v-for="item in languages" :key="item.code" :value="item.code">{{ item.flag }} {{ item.name }}</option></select>
+        <select v-model="sourceLang" @change="selectionChanged" :disabled="isTranslating" class="rounded-md border border-blue-500 bg-blue-500 px-3 py-2 font-normal text-white shadow-sm hover:bg-blue-600 disabled:cursor-not-allowed disabled:border-gray-400 disabled:bg-gray-400"><option v-for="item in languages" :key="item.code" :value="item.code">{{ item.flag }} {{ item.name }}</option></select>
       </label>
       <button @click="swapAll" :disabled="isTranslating" title="言語とテキストを入れ替える" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-xl text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400">⇄</button>
       <label class="flex flex-col gap-1 text-sm font-semibold text-gray-700">訳文言語
         <select v-model="targetLang" @change="updateStyle" :disabled="isTranslating" class="rounded-md border border-blue-500 bg-blue-500 px-3 py-2 font-normal text-white shadow-sm hover:bg-blue-600 disabled:cursor-not-allowed disabled:border-gray-400 disabled:bg-gray-400"><option v-for="item in languages" :key="item.code" :value="item.code">{{ item.flag }} {{ item.name }}</option></select>
       </label>
       <label v-if="targetLang === 'ja'" class="flex flex-col gap-1 text-sm font-semibold text-gray-700">文体
-        <select v-model="japaneseStyle" @change="persistUiState" :disabled="isTranslating" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"><option value="polite">敬体（です・ます調）</option><option value="plain">常体（だ・である調）</option></select>
+        <select v-model="japaneseStyle" @change="selectionChanged" :disabled="isTranslating" class="rounded-md border border-gray-300 bg-white px-3 py-2 font-normal text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"><option value="polite">敬体（です・ます調）</option><option value="plain">常体（だ・である調）</option></select>
       </label>
     </section>
     <p v-if="clipboardError" class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ clipboardError }}</p>
@@ -93,8 +93,9 @@
         async saveProfile() { try { const response = await fetch('/api/profiles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({revision:this.profileRevision, profile:{name:this.profileName, provider_id:this.providerId, model_id:this.modelId, source_lang:this.sourceLang, target_lang:this.targetLang, japanese_style:this.japaneseStyle, effort:this.effort}})}); const result = await response.json(); if (!response.ok) throw new Error(); this.applyProfiles(result); this.profileName = ''; this.profileError = ''; } catch { this.profileError = 'プロファイルを保存できませんでした。再読み込みしてからやり直してください。'; } },
         async deleteProfile() { try { const response = await fetch(`/api/profiles/${encodeURIComponent(this.profileId)}`, {method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({revision:this.profileRevision})}); const result = await response.json(); if (!response.ok) throw new Error(); this.applyProfiles(result); this.profileError = ''; } catch { this.profileError = 'プロファイルを削除できませんでした。再読み込みしてからやり直してください。'; } },
         selectProvider() { const models = this.selectedProvider?.models || []; if (!models.some(m => m.id === this.modelId)) this.modelId = models[0]?.id || ''; this.selectModel(); },
-        selectModel() { const model = this.selectedModel; this.effort = model?.efforts?.includes(this.effort) ? this.effort : (model?.default_effort || null); this.persistUiState(); },
-        updateStyle() { if (!['polite', 'plain'].includes(this.japaneseStyle)) this.japaneseStyle = 'polite'; this.persistUiState(); },
+        selectionChanged() { this.profileId = ''; this.persistUiState(); },
+        selectModel() { const model = this.selectedModel; this.effort = model?.efforts?.includes(this.effort) ? this.effort : (model?.default_effort || null); this.selectionChanged(); },
+        updateStyle() { if (!['polite', 'plain'].includes(this.japaneseStyle)) this.japaneseStyle = 'polite'; this.selectionChanged(); },
         swapAll() { if (this.isTranslating) return; [this.sourceLang, this.targetLang] = [this.targetLang, this.sourceLang]; [this.inputText, this.outputText] = [this.outputText, this.inputText]; this.error = ''; this.clipboardError = ''; this.copiedInput = false; this.copiedOutput = false; this.updateStyle(); },
         clearInput() { this.inputText = ''; this.copiedInput = false; }, clearOutput() { this.outputText = ''; this.copiedOutput = false; },
         async copyText(text, panel) { if (!text) return; try { if (!navigator.clipboard?.writeText) throw new Error(); await navigator.clipboard.writeText(text); this.copiedInput = panel === 'input'; this.copiedOutput = panel === 'output'; } catch { this.clipboardError = 'コピーできませんでした。ブラウザーのクリップボード権限を確認してください。'; } },
