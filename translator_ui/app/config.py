@@ -17,6 +17,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = REPOSITORY_ROOT / ".env"
 DEFAULT_CONFIG_FILE = REPOSITORY_ROOT / "translator-ui.toml"
+ACP_DEFAULT_MODEL_ID = "agent-default"
 
 
 class ModelSettings(BaseModel):
@@ -117,6 +118,7 @@ class ProviderSettings(BaseModel):
         validation_alias=AliasChoices("translation_profile", "default_translation_profile"),
     )
     command: tuple[str, ...] = ()
+    environment: tuple[str, ...] = ()
     timeout_seconds: int = Field(default=180, gt=0)
     mode: str | None = None
 
@@ -139,6 +141,17 @@ class ProviderSettings(BaseModel):
         if not endpoint.startswith(("http://", "https://")) or endpoint.endswith("/v1"):
             raise ValueError("base_url must be an HTTP(S) URL without the /v1 suffix")
         return endpoint
+
+    @field_validator("environment")
+    @classmethod
+    def validate_environment(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value)
+        if (
+            any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", item) for item in normalized)
+            or len(set(normalized)) != len(normalized)
+        ):
+            raise ValueError("environment must contain unique environment-variable names")
+        return normalized
 
     @model_validator(mode="after")
     def validate_provider(self) -> ProviderSettings:
@@ -172,8 +185,11 @@ class ProviderSettings(BaseModel):
         configured_models = (*self.models, *self.model_overrides)
         if configured_models:
             return tuple(model for model in configured_models if model.enabled)
-        assert self.model is not None
-        return (ModelSettings(id=self.model),)
+        if self.model is not None:
+            return (ModelSettings(id=self.model),)
+        if self.kind == "acp":
+            return (ModelSettings(id=ACP_DEFAULT_MODEL_ID, name="Agent default"),)
+        return ()
 
     def translation_profile_for(self, model: ModelSettings) -> Literal["plamo3", "generic"]:
         """Resolve an exact model override, then ordered rules, then the provider default."""
@@ -235,7 +251,11 @@ class Settings(BaseModel):
 
     @property
     def selectable_providers(self) -> tuple[ProviderSettings, ...]:
-        return tuple(p for p in self.providers if p.enabled and p.kind == "openai_compatible")
+        return tuple(p for p in self.providers if p.enabled)
+
+    @property
+    def openai_compatible_providers(self) -> tuple[ProviderSettings, ...]:
+        return tuple(p for p in self.selectable_providers if p.kind == "openai_compatible")
 
     def provider_for(self, provider_id: str | None) -> ProviderSettings | None:
         selected = provider_id or self.default_provider_id

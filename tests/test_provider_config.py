@@ -60,9 +60,13 @@ command = ["agent", "acp"]
     assert settings.default_provider_id == "generic"
     assert settings.allow_profile_writes is True
     assert settings.profiles_file == config_file.parent / "saved-profiles.toml"
-    assert [provider.id for provider in settings.selectable_providers] == ["plamo", "generic"]
+    assert [provider.id for provider in settings.selectable_providers] == [
+        "plamo",
+        "generic",
+        "future-acp",
+    ]
     assert settings.provider_for("generic").api_key == "secret"  # type: ignore[union-attr]
-    assert settings.provider_for("future-acp") is None
+    assert settings.provider_for("future-acp").kind == "acp"  # type: ignore[union-attr]
 
 
 def test_missing_explicit_config_file_is_rejected(monkeypatch, tmp_path) -> None:
@@ -147,3 +151,15 @@ def test_model_overrides_and_rules_resolve_translation_profiles() -> None:
 def test_invalid_model_rule_is_rejected() -> None:
     with pytest.raises(ValueError, match="model rule pattern"):
         ModelRuleSettings(pattern="[", translation_profile="generic")
+
+
+def test_acp_environment_accepts_only_unique_variable_names() -> None:
+    provider = ProviderSettings(
+        id="acp", name="ACP", kind="acp", command=("agent",), environment=("HTTPS_PROXY",)
+    )
+
+    assert provider.environment == ("HTTPS_PROXY",)
+    with pytest.raises(ValueError, match="environment"):
+        ProviderSettings(
+            id="acp", name="ACP", kind="acp", command=("agent",), environment=("BAD-NAME",)
+        )

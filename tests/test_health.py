@@ -68,7 +68,7 @@ def test_stylesheet_is_served_locally() -> None:
     assert ".translation-grid" in response.text
 
 
-def test_providers_lists_only_enabled_openai_compatible_entries() -> None:
+def test_providers_lists_enabled_entries_including_acp() -> None:
     settings = Settings(
         default_provider_id="second",
         providers=(
@@ -112,6 +112,18 @@ def test_providers_lists_only_enabled_openai_compatible_entries() -> None:
                     {
                         "id": "second-model",
                         "name": "second-model",
+                        "efforts": [],
+                        "default_effort": None,
+                    }
+                ],
+            },
+            {
+                "id": "future",
+                "name": "Future",
+                "models": [
+                    {
+                        "id": "agent-default",
+                        "name": "Agent default",
                         "efforts": [],
                         "default_effort": None,
                     }

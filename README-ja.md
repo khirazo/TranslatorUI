@@ -106,8 +106,20 @@ rm -rf -- .venv
 `.env` に `TRANSLATOR_UI_CONFIG=translator-ui.toml` を設定します。API キーは `.env` に置き、TOML には
 `api_key_env = "OPENAI_COMPAT_API_KEY"` のように環境変数名だけを記載します。
 
-UI で選択できるのは有効な `openai_compatible` プロバイダーだけです。ACP の設定は TOML に予約できますが、
-プロセス隔離を含む専用アダプターを別途設計・実装するまで UI には表示しません。
+有効な `openai_compatible` と ACP プロバイダーを UI で選択できます。ACP は既定で無効です。有効化する際は、
+利用するエージェントが提供する場合だけ `mode = "ask"` を明示し、信頼できるローカル CLI だけを `command` 配列で指定してください。各翻訳は専用の
+一時ワークスペースと新しい子プロセスで実行され、filesystem/terminal 能力は提供せず、permission 要求は拒否します。
+モデルと effort はエージェントの capability から取得します。取得できないエージェントは「Agent default」として
+エージェント既定のモデルで動作します。ACP 子プロセスへ渡す環境変数は実行に必要な最小限だけであり、追加が必要な
+ネットワーク設定・認証の**変数名**だけを `environment` 配列に指定します。値を TOML に書かないでください。
+
+`ask` は IBM Bob などが広告する mode の例です。リファレンスの Codex wrapper 試験では mode 名が異なるため、
+`mode` を未指定にしていました。
+
+ACP を有効にする前に、実際の stdio コマンドを確認してください。コーディング CLI が `<CLI> acp` を提供するとは
+限りません。リファレンス実装の Codex は別ラッパーの `npx -y @agentclientprotocol/codex-acp@2.5.0` を使いました。
+これは限定的な翻訳試験だけの固定版なので、使用前に再検証が必要です。動作する ACP コマンドがなければ ACP Provider は
+無効のままにし、OpenAI互換 Provider を利用してください。
 
 各Providerは従来どおりの `model` を残したまま、`[[providers.model_overrides]]` で複数モデルの表示名と
 モデル固有の `translation_profile`（例: `plamo3`）を定義できます。順序付きの

@@ -46,12 +46,19 @@ translation_profile = "generic"
 id = "gpt-5.4-mini"
 name = "GPT-5.4 mini"
 
-# ACP entries are retained as configuration only until the ACP adapter is implemented.
+# ACP is opt-in and requires an ACP stdio command.  A direct `codex acp` command is not required:
+# the reference implementation used the separate Node wrapper below.  Verify its version before use.
 [[providers]]
 id = "codex-acp"
-name = "Codex ACP"
+name = "Codex ACP (wrapper)"
 kind = "acp"
 enabled = false
-command = ["codex", "acp"]
+# Reference verification (2026-11-08): npx -y @agentclientprotocol/codex-acp@2.5.0
+command = ["npx", "-y", "@agentclientprotocol/codex-acp@2.5.0"]
+# Pass only the named variables to the ACP child process.  Keep credentials out of this file.
+# The Codex wrapper may need these user-profile locations to find its own login/configuration.
+# environment = ["USERPROFILE", "APPDATA", "LOCALAPPDATA"]
+# environment = ["HTTPS_PROXY"]
 timeout_seconds = 180
-mode = "ask"
+# The reference Codex test left mode unset.  Set this only to a mode advertised by the wrapper.
+# mode = "read-only"

@@ -112,9 +112,24 @@ For multiple providers, copy `translator-ui.toml.template` to `translator-ui.tom
 `TRANSLATOR_UI_CONFIG=translator-ui.toml` in `.env`. Keep API keys in `.env`; TOML contains only
 the environment-variable name, such as `api_key_env = "OPENAI_COMPAT_API_KEY"`.
 
-Only enabled `openai_compatible` providers are available in the UI. ACP entries may be reserved in
-TOML but remain unavailable until a separately designed adapter with process-isolation safeguards
-is implemented.
+Enabled `openai_compatible` and ACP providers are available in the UI. ACP is disabled by default.
+When enabling it, use an agent-advertised mode only when appropriate and use an array-form `command`
+for a trusted local CLI only. Each translation uses a fresh child process and private temporary workspace; TranslatorUI
+offers no filesystem or terminal capability and rejects every permission request. Models and effort
+choices come from the agent's capabilities. An agent that does not expose a model selector appears
+as **Agent default** and retains its own default model. Network and authentication environment for
+the ACP child process are managed separately by the selected CLI. By default the child receives only
+process-runtime variables; list any additional variable *names* in the ACP provider's `environment`
+array (never put their values in TOML).
+
+`mode = "ask"` is appropriate only when the selected agent advertises that mode (such as IBM Bob).
+The reference Codex wrapper test left `mode` unset because its advertised mode identifiers differ.
+
+Before enabling ACP, verify the actual stdio command. Do not assume that a coding CLI exposes
+`<cli> acp`: the reference Codex integration used the separate wrapper
+`npx -y @agentclientprotocol/codex-acp@2.5.0`. This pinned package was only given a limited
+translation test and must be revalidated before use. If no working ACP command is available, leave
+the provider disabled; TranslatorUI's OpenAI-compatible providers remain available.
 
 Each provider may retain its legacy `model` field and add one or more
 `[[providers.model_overrides]]` entries. An override supplies a display name and, where needed, a

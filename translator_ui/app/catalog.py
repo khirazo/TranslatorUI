@@ -8,6 +8,8 @@ from threading import Lock
 import httpx
 
 from app.config import ModelSettings, ProviderSettings, Settings
+from app.providers.acp import AcpProvider
+from app.providers.base import TranslationProviderError
 
 
 class ProviderCatalogStore:
@@ -39,7 +41,7 @@ class ProviderCatalogStore:
         previous, _ = self.current()
         refreshed: dict[str, tuple[ModelSettings, ...]] = {}
         async with self._client_factory() as client:
-            for provider in settings.selectable_providers:
+            for provider in settings.openai_compatible_providers:
                 try:
                     response = await client.get(provider.model_url, headers=self._headers(provider))
                     response.raise_for_status()
@@ -61,6 +63,14 @@ class ProviderCatalogStore:
                 except (httpx.HTTPError, ValueError, TypeError):
                     if provider.id in previous:
                         refreshed[provider.id] = previous[provider.id]
+        for provider in settings.selectable_providers:
+            if provider.kind != "acp":
+                continue
+            try:
+                refreshed[provider.id] = await AcpProvider(provider).discover_models()
+            except TranslationProviderError:
+                if provider.id in previous:
+                    refreshed[provider.id] = previous[provider.id]
         with self._lock:
             self._catalog = refreshed
             self._generation += 1

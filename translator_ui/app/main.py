@@ -24,6 +24,7 @@ from app.profiles import (
     ProfilesStore,
     ProfileWriteDisabledError,
 )
+from app.providers.acp import AcpProvider
 from app.providers.base import TranslationProvider, TranslationProviderError
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.storage import save_text_translation
@@ -50,6 +51,10 @@ LANGUAGE_CODES = {
     "zh-tw",
 }
 LANGUAGE_ALIASES = {"zh": "zh-hans", "zh-tw": "zh-hant"}
+
+
+def provider_for_settings(settings: ProviderSettings) -> TranslationProvider:
+    return AcpProvider(settings) if settings.kind == "acp" else OpenAICompatibleProvider(settings)
 
 
 class TranslateRequest(BaseModel):
@@ -190,7 +195,7 @@ def create_app(
         app.state.settings, initial_catalog=settings is not None
     )
     app.state.profiles_store = ProfilesStore(app.state.settings)
-    app.state.provider_factory = provider_factory or OpenAICompatibleProvider
+    app.state.provider_factory = provider_factory or provider_for_settings
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
