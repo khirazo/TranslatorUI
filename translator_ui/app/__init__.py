@@ -1,0 +1,1 @@
+"""TranslatorUI FastAPI service package."""

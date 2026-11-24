@@ -1,0 +1,28 @@
+# Ruff configuration for TranslatorUI's Python service.
+
+line-length = 100
+target-version = "py312"
+
+# Limit `ruff check .` and `ruff format .` to Python code introduced for the
+# FastAPI service and its tests.
+include = ["translator_ui/**/*.py", "tests/**/*.py"]
+extend-exclude = ["work", ".venv"]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+
+[lint.isort]
+known-first-party = ["translator_ui"]
+
+[format]
+quote-style = "double"
+line-ending = "lf"

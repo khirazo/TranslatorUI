@@ -1,0 +1,18 @@
+# TranslatorUI notices
+
+## LocaLingo
+
+TranslatorUI was initially derived from [LocaLingo](https://github.com/soukouki/LocaLingo),
+using upstream commit `6fc32d1b6b091ea906aea43de5662579bf7b429a` as its baseline.
+
+LocaLingo is Copyright (c) 2025 sou7 and is licensed under the MIT License.  The
+applicable copyright notice and license text are retained in [LICENSE](LICENSE).
+
+TranslatorUI contains substantial modifications, including a FastAPI streaming text-translation
+service, OpenAI-compatible provider configuration, and ACP provider support.
+
+Copyright (c) 2026 khirazo applies to TranslatorUI-specific contributions. These contributions
+are also distributed under the MIT License in [LICENSE](LICENSE).
+
+This notice records the provenance of the upstream-derived portions and the attribution for
+TranslatorUI-specific contributions.

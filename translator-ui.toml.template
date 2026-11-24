@@ -1,0 +1,62 @@
+# Copy to translator-ui.toml and select it with TRANSLATOR_UI_CONFIG=translator-ui.toml.
+# Keep API keys in .env and reference only their variable names here.
+
+[app]
+default_provider = "openai-compatible"
+save_translations = false
+# Profile writes are opt-in.  When enabled, the GUI writes only this dedicated sidecar TOML.
+allow_profile_writes = false
+# profiles_file = "translator-ui.profiles.toml"
+
+[[providers]]
+id = "openai-compatible"
+name = "OpenAI-compatible local service"
+kind = "openai_compatible"
+enabled = true
+base_url = "http://localhost:1234"
+# A 4,096-token output cap is a portable default. Model overrides may lower or raise it.
+max_tokens = 4096
+default_translation_profile = "generic"
+
+# Model metadata is separate from the live availability check.  The UI will only offer an id
+# returned by the provider catalog, while these entries choose labels and safe prompt profiles.
+# PLaMo is a model-specific prompt profile, not a separate provider.
+[[providers.model_overrides]]
+id = "plamo-3-translate-0.8b"
+name = "PLaMo 3 Translate"
+translation_profile = "plamo3"
+max_tokens = 4096
+
+# Exact overrides take precedence.  Rules are useful for future PLaMo model ids.
+[[providers.model_rules]]
+pattern = "^plamo-"
+translation_profile = "plamo3"
+
+# Cloud services use the same OpenAI-compatible adapter with their own endpoint and credentials.
+[[providers]]
+id = "openai"
+name = "OpenAI API"
+kind = "openai_compatible"
+enabled = false
+base_url = "https://api.openai.com"
+api_key_env = "OPENAI_API_KEY"
+translation_profile = "generic"
+
+[[providers.model_overrides]]
+id = "gpt-5.4-mini"
+name = "GPT-5.4 mini"
+
+# ACP is opt-in and requires an ACP stdio command.  A direct `codex acp` command is not required:
+# Codex can use the separate Node wrapper below.  Verify its version before use.
+[[providers]]
+id = "codex-acp"
+name = "Codex ACP (wrapper)"
+kind = "acp"
+enabled = false
+# Verified example (2026-11-08): npx -y @agentclientprotocol/codex-acp@2.5.0
+command = ["npx", "-y", "@agentclientprotocol/codex-acp@2.5.0"]
+# Pass only the named variables to the ACP child process.  Keep credentials out of this file.
+# The Codex wrapper may need these user-profile locations to find its own login/configuration.
+# environment = ["USERPROFILE", "APPDATA", "LOCALAPPDATA"]
+# environment = ["HTTPS_PROXY"]
+timeout_seconds = 180

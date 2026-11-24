@@ -1,74 +1,182 @@
+# TranslatorUI
+## スクリーンショット
 
-# LocaLingo
+![TranslatorUI のテキスト翻訳画面](docs/screenshot-text.png)
 
-LocaLingoは、Preferred Networksによって開発された翻訳向け特化型大規模言語モデルであるPLaMo翻訳モデルを利用した、翻訳WebUIです。LM StudioやOllamaなどのOpenAI互換APIを持ったローカルLLMサーバーと連携して動作します。
+TranslatorUI は、OpenAI 互換 LLM エンドポイントを使って逐次テキスト翻訳を行うローカル Web UI です。
+LM Studio をはじめとする互換プロバイダーに対応します。PDF 翻訳は意図的に対象外であり、このリポジトリーは
+PDFMathTranslate を取得・同梱・実行しません。
 
-![LocaLingo Screenshot](docs/screenshot-text.png)
+本プロジェクトは MIT ライセンスの LocaLingo を基にしており、MIT ライセンスは
+[`LICENSE`](LICENSE) に保持しています。upstream の帰属と来歴は [`NOTICE`](NOTICE) を参照してください。
 
-テキストの翻訳だけでなく、PDFファイルの翻訳にも対応しています。PDFMathTranslateというライブラリを利用し、フォーマットを維持したまま翻訳を行います。PDF中に画像や図表が含まれていても問題ありません。(ただし、画像中の文字は翻訳されません。)
+## ローカル起動
 
-![LocaLingo Screenshot](docs/screenshot-pdf.png)
-
-## 特徴
-
-- **文字長制限なし**: 一般の翻訳ツールでは2000文字程度の制限がありますが、LocaLingoではそのような制限はありません。使用するLLMサーバーの制限に依存しますが、数万、数十万文字の翻訳も可能です。
-- **ローカルでの動作**: インターネット接続が不要で、データのプライバシーを保護できます。すべての翻訳処理はローカル環境で行われます。
-- **使いやすいUI**: 直感的なユーザーインターフェースを提供し、簡単に翻訳作業を行えます。
-- **複数言語対応**: 英語、日本語、中国語、韓国語、フランス語、ドイツ語、スペイン語など、多数の言語間での翻訳が可能です。
-- **PDF翻訳対応**: PDFファイルの翻訳が可能です。フォーマットを維持したまま翻訳を行います。
-
-## 動作させる手順
-
-### LLMサーバーの用意
-
-1. LM StudioやOllamaなど、OpenAI互換APIを持ったローカルLLMサーバーをインストールし、起動します。
-2. [pfnet/plamo-2-translate · Hugging Face](https://huggingface.co/pfnet/plamo-2-translate)や[mmnga/plamo-2-translate-gguf · Hugging Face](https://huggingface.co/mmnga/plamo-2-translate-gguf)などを参考に、PLaMo翻訳モデルをLLMサーバーにロードします。
-3. LLMサーバーがOpenAI互換APIで動作していることを確認します。
-   - 例えばLM Studioの場合、Serve on Local Networkのオプションを有効にする必要があります。
-
-以下のようなcurlコマンドを実行して、LLMサーバーが正しく動作していることを確認します。ポート番号やエンドポイントは、使用しているLLMサーバーに応じて適宜変更してください。
+[uv](https://docs.astral.sh/uv/) を導入し、`.env.template` を `.env` にコピーして、LLM サーバーが
+公開するモデル ID と接続先を設定します。`LLM_ENDPOINT` は `/v1` を含まないルート URL です。
 
 ```bash
-curl http://localhost:1234/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "plamo-2-translate",
-    "messages": [
-      {
-        "role": "user",
-        "content": "<|plamo:op|>dataset\ntranslation\n\n<|plamo:op|>input lang=English\nHello!\n<|plamo:op|>output lang=Japanese"
-      }
-    ],
-    "stop": ["<|plamo:op|>", "<|plamo:reserved:0x1E|>"]
-  }'
+./translator-ui.sh
 ```
 
-PLaMo翻訳モデルは長文翻訳に対応していますが、ほとんどの場合LLMサーバーの設定で出力トークン長が制限されています。出力トークン長の設定を適切に調整してください。
+Windows PowerShell では次を実行します。
 
-### ローカルでのみ動作させる場合
+```powershell
+.\translator-ui.ps1
+```
 
-1. compose.ymlを開き、tunnelに関するセクションをコメントアウトあるいは削除します。また、`LLM_ENDPOINT`環境変数を、使用しているLLMサーバーのエンドポイントに設定します。
-2. 以下のコマンドを実行して、LocaLingoを起動します。
+Windows PowerShell 5 で Execution Policy により読み込みが拒否される場合は、ポリシーを恒久変更せず、
+その起動だけ次のように実行できます。
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\translator-ui.ps1
+```
+
+組織のグループポリシーがこれを禁止する場合は、そのポリシーに従ってください。ダウンロードしたリポジトリーでは、
+ポリシーが `RemoteSigned` の場合に限り `Unblock-File .\translator-ui.ps1` も選択肢です。
+
+ラッパーは `uv run --locked` を優先してロック済み環境を解決してから、その環境のPythonでlauncherを直接起動します。
+これにより `Ctrl+C` はuvの中継ではなくlauncherへ届きます。uv がない場合は既存の `.venv` を使い、`.venv` も
+ない場合は依存関係がすでにある Python 3.12 以上だけを利用します。グローバル Python 環境へ依存関係を導入する
+ことはありません。
+
+サービスは `127.0.0.1:4568` にバインドします。ヘルスチェック成功後にブラウザーを開くには、
+macOS/Linux/WSL では `--open-browser`、PowerShell では `-OpenBrowser` を指定してください。
+
+ANSI対応の対話端末では、起動ラッパーが簡易TUIを表示します。`q` の後に `y` を押すと TranslatorUI の
+サーバーだけを終了し、`o` はUIを再度ブラウザーで開きます。`h` または `?` はヘルプ、`j` / `k` / `f` は
+メモリー上のサーバーログの閲覧／末尾追従です。`Ctrl+C` でも安全に停止できます。launcherがブラウザーを閉じる
+ことはありません。macOS/Linux/WSL では `--no-tui`、PowerShell では `-NoTui` を指定すると前景ログ表示に
+戻ります。非対話起動に加え、Windows上の VS Code 統合ターミナルでは `Ctrl+C` を確実に扱うため、自動的に
+launcherを迂回してUvicornを直接前景起動します。TUIはWindows Terminalまたは外部の対応端末で利用してください。
+WSLでは `--open-browser` と `o` が `wslview`、次に `cmd.exe /c start` を使ってWindows側の既定ブラウザーを
+開きます。
+
+### Windows と WSL で同じチェックアウトを使う場合
+
+Windows用とLinux用の仮想環境は互換ではありません。同じリポジトリーを `/mnt/<drive>/...` 経由でWSLから開き、
+両方の環境で既定の `.venv` を使うと、WSL側の `uv` がWindows用の `.venv` をLinux用に置き換えることがあります。
+Windows側の `uv` はそのLinux用リンクを削除できず、`failed to remove file '.venv/lib64'` で停止します。
+
+最も安全なのはWindows用とWSL用に別のチェックアウトを使うことです。同じチェックアウトが必要な場合は、各環境で
+仮想環境名を分離してから起動してください。
+
+```powershell
+# Windows PowerShell: リポジトリーのルートで実行
+$env:UV_PROJECT_ENVIRONMENT = ".venv-win"
+.\translator-ui.ps1
+```
 
 ```bash
-sudo docker-compose up -d
+# WSL: 同じチェックアウトのルートで実行
+export UV_PROJECT_ENVIRONMENT=.venv-linux
+./translator-ui.sh
 ```
 
-### Cloudflare Tunnelを用いて外部公開する場合
+`.venv-win` と `.venv-linux` はGit管理外です。各端末でこの環境変数を設定した状態で `uv sync --locked` を
+一度実行しておくこともできます。
 
-Cloudflareのサービスについての詳細な説明は他のドキュメントを参照してください。
+既定の `.venv` がすでにWSL用に置き換わった場合は、**すべてのTranslatorUI・Python・uvプロセスを終了してから**、
+まずWindows側で `.venv` フォルダーだけを削除し、起動ラッパーを再実行します。`uv run --locked` がWindows用の
+環境を自動作成するため、通常は手動の `uv sync` は不要です。この削除対象はPython仮想環境だけであり、
+ソースコード、`.env`、`translator-ui.toml` は削除しません。
 
-1. compose.ymlを開き、`LLM_ENDPOINT`環境変数を使用しているLLMサーバーのエンドポイントに設定します。
-2. `.env`ファイルを作成し、Cloudflare Tunnelの認証トークンを`TUNNEL_TOKEN`環境変数に設定します。
-3. 必要に応じてCloudflare Accessの設定を行って下さい。この設定を行わない場合、全世界の誰でも翻訳サービスにアクセスできるようになります。
-4. 以下のコマンドを実行して、LocaLingoを起動します。
+```powershell
+# Windows PowerShell: リポジトリーのルートで実行
+if (-not (Test-Path -LiteralPath .\pyproject.toml)) { throw "Run this from the repository root." }
+Remove-Item -LiteralPath .\.venv -Recurse -Force
+.\translator-ui.ps1
+```
+
+Windows側の削除が `failed to remove file '.venv/lib64'` やアクセス拒否で失敗した場合だけ、WSLで対象リポジトリーの
+ルートであることを確認して次を実行します。
 
 ```bash
-sudo docker-compose up -d
+pwd
+test -f pyproject.toml && test -d .venv || exit 1
+rm -rf -- .venv
 ```
 
-## 注意事項
+その後、Windows PowerShellでリポジトリーのルートに戻り、起動ラッパーを再実行します。
 
-1. LocaLingoは、Preferred Networksが開発したPLaMo翻訳モデルを利用しています。PLaMo翻訳モデルの使用には、PLaMoコミュニティライセンスに従う必要があります。具体的には、個人や中小規模の企業は有償無償問わず自由に使用できますが、大規模な商用利用には別途ライセンス契約が必要です。詳細は[PLaMo Community Licenseについて](https://tech.preferred.jp/ja/blog/plamo-community-license/)や[PLaMoコミュニティライセンス契約](https://plamo.preferredai.jp/info/plamo-community-license-ja)をご参照ください。
-2. LocaLingoはLLMサーバーの機能を持っていません。動作させるためには、LM StudioやOllamaなどのOpenAI互換APIを持ったローカルLLMサーバーが必要です。
-3. 初期状態ではすべての翻訳を記録します。翻訳データを保存しないようにするには、compose.yml内の`SAVE_TRANSLATIONS`環境変数を`false`に設定してください。
+```powershell
+.\translator-ui.ps1
+```
+
+## プロバイダー設定
+
+複数プロバイダーを使う場合は、`translator-ui.toml.template` を `translator-ui.toml` にコピーして、
+`.env` に `TRANSLATOR_UI_CONFIG=translator-ui.toml` を設定します。API キーは `.env` に置き、TOML には
+`api_key_env = "OPENAI_COMPAT_API_KEY"` のように環境変数名だけを記載します。
+
+有効な `openai_compatible` と ACP プロバイダーを UI で選択できます。ACP は既定で無効です。有効化する際は、
+利用するエージェントが提供する場合だけ `mode = "ask"` を明示し、信頼できるローカル CLI だけを `command` 配列で指定してください。各翻訳は専用の
+一時ワークスペースと新しい子プロセスで実行され、filesystem/terminal 能力は提供せず、permission 要求は拒否します。
+モデルと effort はエージェントの capability から取得します。取得できないエージェントは「Agent default」として
+エージェント既定のモデルで動作します。ACP 子プロセスへ渡す環境変数は実行に必要な最小限だけであり、追加が必要な
+ネットワーク設定・認証の**変数名**だけを `environment` 配列に指定します。値を TOML に書かないでください。
+意図しないエージェントセッションの重複を防ぐため、TranslatorUI は ACP 子プロセスを同時に 1 本だけ実行します。
+
+`ask` は IBM Bob などが広告する mode の例です。Codex ACP wrapper は異なる mode 名を広告する場合があるため、
+対応する mode が広告されていなければ `mode` を未指定にしてください。
+
+ACP を有効にする前に、実際の stdio コマンドを確認してください。コーディング CLI が `<CLI> acp` を提供するとは
+限りません。Codex では別ラッパーの `npx -y @agentclientprotocol/codex-acp@2.5.0` を利用できます。
+これは翻訳の検証範囲が限定的な固定版なので、使用前に再検証が必要です。動作する ACP コマンドがなければ ACP Provider は
+無効のままにし、OpenAI互換 Provider を利用してください。
+
+各Providerは従来どおりの `model` を残したまま、`[[providers.model_overrides]]` で複数モデルの表示名と
+モデル固有の `translation_profile`（例: `plamo3`）を定義できます。順序付きの
+`[[providers.model_rules]]` は検証済み正規表現による補完規則であり、個別上書き、規則、Provider既定値の順に
+適用されます。起動時と「設定を再読み込み」後に Provider の `/v1/models` を照会し、その時点で報告された
+モデル ID だけを、このTOML metadata と合成してUIへ表示します。モデルごとに `efforts` と
+`effort_request_field` を定義した場合だけ、選択したeffortを上流へ送ります。画面の「設定を再読み込み」は
+アプリケーションを再起動せずに `.env` と選択中のTOMLを読み直します。親プロセスの
+環境変数は `.env` より優先され、再読込に失敗しても稼働中の設定は変更されません。
+
+`max_tokens` はモデルの文脈長ではなく出力上限です。Provider の既定値は 4,096 とし、特定モデルだけ
+変更したい場合は `model_overrides` に `max_tokens` を指定します。モデル別の値が優先されます。入力と出力の
+合計は、上流ランタイムで実際に設定された文脈長に収めてください。
+
+名前付きの選択状態を profile として保存するには、`allow_profile_writes = true` を明示します。TranslatorUI は
+接続設定TOMLや `.env` を書き換えず、固定の `translator-ui.profiles.toml`（または `profiles_file`）だけを
+更新します。保存時は revision を照合し、一時ファイルから原子的に置換するため、一覧取得後に手編集された
+profile を上書きしません。
+
+`generic` 翻訳プロファイルは、モデルに依存しない翻訳指示を送り、XML、HTML、プレースホルダー、
+コード構造を保持したまま自然言語部分を翻訳します。PLaMo 専用のプロンプトトークンや stop token は送りません。
+
+画面は、選択したプロバイダー、モデル、effort、原文/訳文言語、日本語文体を、この origin のブラウザー
+ローカルストレージに記憶します。原文・翻訳結果・API キー・接続先・設定値は保存しません。次回起動時は
+現在の設定と照合し、利用できなくなった選択値を安全に既定値へ戻します。
+
+## プロキシー設定
+
+TranslatorUI から OpenAI 互換 LLM への上流要求は、HTTPX の標準プロキシー環境変数
+`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` を使用します。`.env.template` のコメント付き例を
+Git 管理外の `.env` へコピーし、ネットワークに必要な変数だけを設定してください。一般的な HTTP forward
+proxy では、LLM エンドポイント自体が HTTPS でも proxy URL は `http://` を指定します。LM Studio への
+ローカル通信を proxy から除外するには、次を設定します。
+
+```dotenv
+NO_PROXY=localhost,127.0.0.1,::1
+```
+
+proxy URL に資格情報を含める場合、その URL は秘密情報です。実値は `.env` または起動プロセスの環境変数に
+だけ置き、`translator-ui.toml`、文書、ログ、コミットには入れないでください。proxy の挙動と認証の互換性は
+HTTPX および設定した proxy に従います。proxy はプロセス全体に適用され、現在は Provider ごとには選択できません。
+
+## 確認
+
+```bash
+curl http://localhost:4568/health
+```
+
+期待する応答は `{"status":"ok"}` です。翻訳要求は同一オリジンの `/api/translate-text` に送られ、
+Server-Sent Events で逐次返却されます。
+
+## ライセンスと帰属
+
+TranslatorUI は MIT ライセンスの [LocaLingo](https://github.com/soukouki/LocaLingo) を基にしています。
+upstream の著作権表示と MIT ライセンス文は [`LICENSE`](LICENSE) に保持し、採用した基準コミットと
+upstream 由来部分の来歴は [`NOTICE`](NOTICE) に記録しています。

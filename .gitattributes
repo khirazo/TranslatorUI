@@ -1,0 +1,14 @@
+# Normalize text files across Windows and Unix-like environments.
+* text=auto
+
+# Keep repository documentation and configuration consistently LF-terminated.
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.rb text eol=lf
+*.conf text eol=lf
+*.txt text eol=lf
+*.sh text eol=lf
+
+# Treat documentation images as binary.
+*.png binary

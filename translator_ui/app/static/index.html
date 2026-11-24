@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TranslatorUI</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+  <main id="app" class="app-shell">
+    <header class="app-header"><h1 class="app-title">TranslatorUI</h1><p class="app-subtitle">LLM による逐次テキスト翻訳</p></header>
+    <section class="settings-panel">
+      <button type="button" @click="isSettingsExpanded = !isSettingsExpanded" :aria-expanded="isSettingsExpanded" aria-controls="translation-settings" class="settings-toggle">
+        <span class="settings-title">翻訳設定</span>
+        <span class="settings-summary"><span>{{ selectedProvider?.name || 'Provider を読み込み中' }} / {{ selectedModel?.name || 'Model を読み込み中' }}</span><span class="settings-chevron" aria-hidden="true">{{ isSettingsExpanded ? '▾' : '▸' }}</span></span>
+      </button>
+      <div v-if="isSettingsExpanded" id="translation-settings" class="settings-content">
+        <div class="settings-controls">
+          <label class="field">Provider
+            <select v-model="providerId" @change="selectProvider" :disabled="isTranslating || isReloading"><option v-for="provider in providers" :key="provider.id" :value="provider.id">{{ provider.name }}</option></select>
+          </label>
+          <label class="field">Model
+            <select v-model="modelId" @change="selectModel" :disabled="isTranslating || isReloading"><option v-for="model in selectedProvider?.models || []" :key="model.id" :value="model.id">{{ model.name }}</option></select>
+          </label>
+          <label class="field field-compact">Effort
+            <select v-model="effort" @change="selectionChanged" :disabled="isTranslating || isReloading || !(selectedModel?.efforts || []).length"><option v-if="!(selectedModel?.efforts || []).length" :value="null">未対応</option><option v-for="item in selectedModel?.efforts || []" :key="item" :value="item">{{ item }}</option></select>
+          </label>
+          <button @click="reloadSettings" :disabled="isReloading || isTranslating" class="button button-secondary">{{ isReloading ? '再読込中…' : '設定を再読み込み' }}</button>
+        </div>
+        <div class="profile-controls">
+          <label class="field">保存済みプロファイル
+            <select v-model="profileId" @change="applyProfile" :disabled="isTranslating || isReloading || !profiles.length"><option value="">選択してください</option><option v-for="profile in profiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option></select>
+          </label>
+          <label v-if="profileWritesEnabled" class="field">プロファイル名
+            <input v-model="profileName" :disabled="isTranslating || isReloading" placeholder="例: Qwen・英日・常体">
+          </label>
+          <button v-if="profileWritesEnabled" @click="saveProfile" :disabled="isTranslating || isReloading || !profileName.trim()" class="button button-secondary">保存</button>
+          <button v-if="profileWritesEnabled" @click="deleteProfile" :disabled="isTranslating || isReloading || !profileId" class="button button-danger">削除</button>
+        </div>
+      </div>
+      <p v-if="profileError" class="status-message status-error" role="alert">{{ profileError }}</p>
+      <div v-if="settingsMessage" :role="settingsError ? 'alert' : 'status'" :class="settingsError ? 'status-error' : 'status-success'" class="status-message status-dismissible">
+        <p>{{ settingsMessage }}</p>
+        <button type="button" @click="dismissSettingsMessage" aria-label="通知を閉じる" title="閉じる" class="dismiss-button">×</button>
+      </div>
+    </section>
+    <section class="language-controls">
+      <label class="language-field">原文言語
+        <select v-model="sourceLang" @change="selectionChanged" :disabled="isTranslating" class="language-select"><option v-for="item in languages" :key="item.code" :value="item.code">{{ item.flag }} {{ item.name }}</option></select>
+      </label>
+      <button @click="swapAll" :disabled="isTranslating" title="言語とテキストを入れ替える" class="button button-icon">⇄</button>
+      <label class="language-field">訳文言語
+        <select v-model="targetLang" @change="updateStyle" :disabled="isTranslating" class="language-select"><option v-for="item in languages" :key="item.code" :value="item.code">{{ item.flag }} {{ item.name }}</option></select>
+      </label>
+      <label v-if="targetLang === 'ja'" class="language-field">文体
+        <select v-model="japaneseStyle" @change="selectionChanged" :disabled="isTranslating" class="select-control"><option value="polite">敬体（です・ます調）</option><option value="plain">常体（だ・である調）</option></select>
+      </label>
+    </section>
+    <p v-if="clipboardError" class="status-message status-error clipboard-message">{{ clipboardError }}</p>
+    <section class="translation-grid">
+      <div class="translation-panel">
+        <div class="panel-header"><h2 class="panel-title">{{ language(sourceLang).flag }} {{ language(sourceLang).name }}</h2><div class="panel-actions"><button @click="copyText(inputText, 'input')" :disabled="!inputText" title="コピー" :class="{ 'is-copied': copiedInput }" class="icon-button">⧉</button><button @click="clearInput" :disabled="isTranslating || !inputText" title="クリア" class="icon-button"><svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
+        <textarea v-model="inputText" :disabled="isTranslating" :placeholder="`${language(sourceLang).name}を入力してください…`" class="translation-input"></textarea>
+        <button @click="translateText" :disabled="isTranslating || !inputText.trim()" class="button button-primary translate-button">{{ isTranslating ? '翻訳中…' : '翻訳する' }}</button>
+      </div>
+      <div class="translation-panel">
+        <div class="panel-header"><h2 class="panel-title">{{ language(targetLang).flag }} {{ language(targetLang).name }}</h2><div class="panel-actions"><button @click="copyText(outputText, 'output')" :disabled="!outputText" title="コピー" :class="{ 'is-copied': copiedOutput }" class="icon-button">⧉</button><button @click="clearOutput" :disabled="isTranslating || !outputText" title="クリア" class="icon-button"><svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
+        <div class="translation-output"><span v-if="outputText">{{ outputText }}</span><span v-else class="output-placeholder">翻訳結果がここに表示されます</span></div>
+        <button v-if="isTranslating" @click="stopText" class="button button-danger stop-button">中止する</button><p v-if="error" class="status-message status-error translation-error">{{ error }}</p>
+      </div>
+    </section>
+  </main>
+  <script>
+    const { createApp } = Vue;
+    const UI_STATE_KEY = 'translator-ui.ui-state.v1';
+    createApp({
+      data() { return { providers: [], providerId: '', modelId: '', effort: null, japaneseStyle: 'polite', savedUiState: null, isUiStateReady: false, configGeneration: 0, isReloading: false, isSettingsExpanded: false, settingsMessage: '', settingsError: false, profiles: [], profileId: '', profileName: '', profileRevision: '', profileWritesEnabled: false, profileError: '', languages: [{code:'ja',name:'日本語',flag:'🇯🇵'},{code:'en',name:'English',flag:'🇺🇸'},{code:'zh',name:'中文（简体）',flag:'🇨🇳'},{code:'zh-tw',name:'中文（繁體）',flag:'🇹🇼'},{code:'ko',name:'한국어',flag:'🇰🇷'},{code:'ar',name:'العربية',flag:'🇸🇦'},{code:'it',name:'Italiano',flag:'🇮🇹'},{code:'id',name:'Bahasa Indonesia',flag:'🇮🇩'},{code:'nl',name:'Nederlands',flag:'🇳🇱'},{code:'es',name:'Español',flag:'🇪🇸'},{code:'th',name:'ไทย',flag:'🇹🇭'},{code:'de',name:'Deutsch',flag:'🇩🇪'},{code:'fr',name:'Français',flag:'🇫🇷'},{code:'vi',name:'Tiếng Việt',flag:'🇻🇳'},{code:'ru',name:'Русский',flag:'🇷🇺'}], sourceLang:'en', targetLang:'ja', inputText:'', outputText:'', error:'', clipboardError:'', isTranslating:false, controller:null, copiedInput:false, copiedOutput:false }; },
+      computed: { selectedProvider() { return this.providers.find(p => p.id === this.providerId); }, selectedModel() { return this.selectedProvider?.models.find(m => m.id === this.modelId); } },
+      mounted() { this.savedUiState = this.loadUiState(); this.restoreLanguageState(this.savedUiState); this.loadProviders().finally(() => this.loadProfiles()); },
+      methods: {
+        language(code) { return this.languages.find(item => item.code === code) || {code, name:code, flag:''}; },
+        loadUiState() { try { const saved = JSON.parse(window.localStorage.getItem(UI_STATE_KEY) || 'null'); if (!saved || saved.version !== 1) return null; return {provider_id: typeof saved.provider_id === 'string' ? saved.provider_id : null, model_id: typeof saved.model_id === 'string' ? saved.model_id : null, effort: typeof saved.effort === 'string' ? saved.effort : null, source_lang: typeof saved.source_lang === 'string' ? saved.source_lang : null, target_lang: typeof saved.target_lang === 'string' ? saved.target_lang : null, japanese_style: ['polite', 'plain'].includes(saved.japanese_style) ? saved.japanese_style : 'polite'}; } catch { return null; } },
+        restoreLanguageState(saved) { const codes = this.languages.map(item => item.code); this.sourceLang = codes.includes(saved?.source_lang) ? saved.source_lang : 'en'; this.targetLang = codes.includes(saved?.target_lang) ? saved.target_lang : 'ja'; this.japaneseStyle = saved?.japanese_style || 'polite'; },
+        currentUiState() { return {provider_id:this.providerId, model_id:this.modelId, effort:this.effort, source_lang:this.sourceLang, target_lang:this.targetLang, japanese_style:this.japaneseStyle}; },
+        persistUiState() { if (!this.isUiStateReady) return; try { window.localStorage.setItem(UI_STATE_KEY, JSON.stringify({version:1, ...this.currentUiState()})); } catch {} },
+        applyChoices(result, message = '', saved = null) { const old = `${this.providerId}/${this.modelId}/${this.effort}`; this.providers = result.providers || []; this.configGeneration = result.generation; const providerId = this.providers.some(provider => provider.id === saved?.provider_id) ? saved.provider_id : result.defaults.provider_id; this.providerId = providerId; const provider = this.selectedProvider; const requestedModel = saved?.model_id || (providerId === result.defaults.provider_id ? result.defaults.model_id : null); const model = provider?.models.find(item => item.id === requestedModel) || provider?.models[0]; this.modelId = model?.id || ''; const requestedEffort = saved ? saved.effort : result.defaults.effort; this.effort = model?.efforts?.includes(requestedEffort) ? requestedEffort : (model?.default_effort || null); if (message) { this.settingsMessage = old === `${this.providerId}/${this.modelId}/${this.effort}` ? '設定を再読み込みしました。' : '設定の変更により選択値を既定値へ戻しました。'; this.settingsError = false; } },
+        async loadProviders() { try { const response = await fetch('/api/providers'); if (!response.ok) throw new Error(); this.applyChoices(await response.json(), '', this.savedUiState); this.savedUiState = null; this.isUiStateReady = true; this.persistUiState(); } catch { this.settingsMessage = '翻訳設定を取得できませんでした。'; this.settingsError = true; } },
+        applyProfiles(result) { this.profiles = result.profiles || []; this.profileRevision = result.revision || ''; this.profileWritesEnabled = result.writes_enabled === true; if (!this.profiles.some(profile => profile.id === this.profileId)) this.profileId = ''; },
+        async loadProfiles() { try { const response = await fetch('/api/profiles'); if (!response.ok) throw new Error(); this.applyProfiles(await response.json()); this.profileError = ''; } catch { this.profileError = 'プロファイルを読み込めませんでした。'; } },
+        applyProfile() { const profile = this.profiles.find(item => item.id === this.profileId); if (!profile) return; const provider = this.providers.find(item => item.id === profile.provider_id); const model = provider?.models.find(item => item.id === profile.model_id); if (!model) { this.profileError = 'このプロファイルのモデルは現在利用できません。'; return; } this.providerId = profile.provider_id; this.modelId = profile.model_id; this.effort = model.efforts.includes(profile.effort) ? profile.effort : (model.default_effort || null); this.sourceLang = profile.source_lang; this.targetLang = profile.target_lang; this.japaneseStyle = profile.japanese_style; this.profileError = ''; this.persistUiState(); },
+        async saveProfile() { try { const response = await fetch('/api/profiles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({revision:this.profileRevision, profile:{name:this.profileName, provider_id:this.providerId, model_id:this.modelId, source_lang:this.sourceLang, target_lang:this.targetLang, japanese_style:this.japaneseStyle, effort:this.effort}})}); const result = await response.json(); if (!response.ok) throw new Error(); this.applyProfiles(result); this.profileName = ''; this.profileError = ''; } catch { this.profileError = 'プロファイルを保存できませんでした。再読み込みしてからやり直してください。'; } },
+        async deleteProfile() { try { const response = await fetch(`/api/profiles/${encodeURIComponent(this.profileId)}`, {method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({revision:this.profileRevision})}); const result = await response.json(); if (!response.ok) throw new Error(); this.applyProfiles(result); this.profileError = ''; } catch { this.profileError = 'プロファイルを削除できませんでした。再読み込みしてからやり直してください。'; } },
+        selectProvider() { const models = this.selectedProvider?.models || []; if (!models.some(m => m.id === this.modelId)) this.modelId = models[0]?.id || ''; this.selectModel(); },
+        selectionChanged() { this.profileId = ''; this.persistUiState(); },
+        selectModel() { const model = this.selectedModel; this.effort = model?.efforts?.includes(this.effort) ? this.effort : (model?.default_effort || null); this.selectionChanged(); },
+        updateStyle() { if (!['polite', 'plain'].includes(this.japaneseStyle)) this.japaneseStyle = 'polite'; this.selectionChanged(); },
+        swapAll() { if (this.isTranslating) return; [this.sourceLang, this.targetLang] = [this.targetLang, this.sourceLang]; [this.inputText, this.outputText] = [this.outputText, this.inputText]; this.error = ''; this.clipboardError = ''; this.copiedInput = false; this.copiedOutput = false; this.updateStyle(); },
+        clearInput() { this.inputText = ''; this.copiedInput = false; }, clearOutput() { this.outputText = ''; this.copiedOutput = false; },
+        async copyText(text, panel) { if (!text) return; try { if (!navigator.clipboard?.writeText) throw new Error(); await navigator.clipboard.writeText(text); this.copiedInput = panel === 'input'; this.copiedOutput = panel === 'output'; } catch { this.clipboardError = 'コピーできませんでした。ブラウザーのクリップボード権限を確認してください。'; } },
+        dismissSettingsMessage() { this.settingsMessage = ''; this.settingsError = false; },
+        async reloadSettings() { this.isReloading = true; this.settingsMessage = ''; try { const response = await fetch('/api/settings/reload', {method:'POST'}); const result = await response.json(); if (!response.ok) throw new Error(result.detail); this.applyChoices(result, 'reloaded', this.currentUiState()); this.persistUiState(); await this.loadProfiles(); } catch (error) { this.settingsMessage = error.message || '設定を再読み込みできませんでした。'; this.settingsError = true; } finally { this.isReloading = false; } },
+        async translateText() { if (!this.inputText.trim()) return; this.isTranslating = true; this.outputText = ''; this.error = ''; this.copiedOutput = false; this.controller = new AbortController(); try { const response = await fetch('/api/translate-text', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:this.inputText, source_lang:this.sourceLang, target_lang:this.targetLang, provider_id:this.providerId, model_id:this.modelId, effort:this.effort, japanese_style:this.targetLang === 'ja' ? this.japaneseStyle : null}), signal:this.controller.signal}); if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`); const reader=response.body.getReader(), decoder=new TextDecoder(); let pending=''; while (true) { const {done,value}=await reader.read(); pending+=decoder.decode(value || new Uint8Array(), {stream:!done}); const lines=pending.split('\n'); pending=lines.pop(); for (const line of lines) { if (!line.startsWith('data: ')) continue; const event=JSON.parse(line.slice(6)); if (event.token) this.outputText+=event.token; if (event.error) this.error=event.error; } if (done) break; } } catch (error) { if (error.name !== 'AbortError') this.error=`エラーが発生しました: ${error.message}`; } finally { this.isTranslating=false; this.controller=null; } },
+        stopText() { this.controller?.abort(); }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

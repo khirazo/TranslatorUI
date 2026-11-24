@@ -1,74 +1,201 @@
-# LocaLingo
+# TranslatorUI
+## Screenshot
 
-[日本語版はこちら](README-ja.md)
+![TranslatorUI text translation screen](docs/screenshot-text.png)
 
-LocaLingo is a translation web UI that utilizes PLaMo's specialized large-scale language model for machine translation, developed by Preferred Networks. It operates in tandem with local LLM servers supporting OpenAI-compatible APIs, including LM Studio and Ollama.
+TranslatorUI is a local web UI for streaming text translation through OpenAI-compatible LLM
+endpoints. It supports LM Studio and other compatible providers. PDF translation is intentionally
+out of scope: this repository does not download, bundle, or run PDFMathTranslate.
 
-![LocaLingo Screenshot](docs/screenshot-text.png)
+The project is based on the MIT-licensed LocaLingo baseline; its MIT license is retained in
+[`LICENSE`](LICENSE). See [`NOTICE`](NOTICE) for upstream attribution and provenance.
 
-In addition to text translation, the tool also supports PDF file translation. This functionality is achieved through a library called PDFMathTranslate, which performs translations while preserving the original document's formatting. The system can handle cases where PDF files contain images or diagrams without issue. (Note: Characters contained in images will not be translated.)
+## Run locally
 
-![LocaLingo Screenshot](docs/screenshot-pdf.png)
-
-## Features
-
-- **No character length limit**: While standard translation tools typically impose 2,000-character limits, LocaLingo has no such constraints. The maximum translation capacity depends on the restrictions of the LLM server in use—translations can span tens of thousands or even hundreds of thousands of characters.
-- **Local operation**: Performs all translations locally without requiring an internet connection, ensuring data privacy protection.
-- **User-friendly interface**: Provides an intuitive user interface that makes translation tasks straightforward and convenient.
-- **Multilingual support**: Supports translations between numerous languages including English, Japanese, Chinese, Korean, French, German, and Spanish.
-- **PDF translation capability**: Enables translation of PDF files while maintaining the original document's formatting.
-
-## Setup Instructions
-
-### Preparing the LLM Server
-
-1. Install and launch a local LLM server supporting OpenAI-compatible APIs, such as LM Studio or Ollama.
-2. Follow documentation like [pfnet/plamo-2-translate · Hugging Face](https://huggingface.co/pfnet/plamo-2-translate) or [mmnga/plamo-2-translate-gguf · Hugging Face](https://huggingface.co/mmnga/plamo-2-translate-gguf) to load the PLaMo translation model onto the LLM server.
-3. Verify that the LLM server is running with OpenAI-compatible APIs. For LM Studio specifically, you need to enable the "Serve on Local Network" option.
-
-To verify proper operation of the LLM server, execute the following curl command. Adjust port numbers and endpoints according to the specific LLM server in use:
+Install [uv](https://docs.astral.sh/uv/), copy `.env.template` to `.env`, and set the model ID and
+endpoint exposed by your LLM server. `LLM_ENDPOINT` is the root URL without `/v1`.
 
 ```bash
-curl http://localhost:1234/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "plamo-2-translate",
-    "messages": [
-      {
-        "role": "user",
-        "content": "<|plamo:op|>dataset\ntranslation\n\n<|plamo:op|>input lang=English\nHello!\n<|plamo:op|>output lang=Japanese"
-      }
-    ],
-    "stop": ["<|plamo:op|>", "<|plamo:reserved:0x1E|>"]
-  }'
+./translator-ui.sh
 ```
 
-While the PLaMo translation model supports long-form translations, most LLM servers have output token length restrictions configured by default. Be sure to properly adjust the setting for maximum output token length.
+On Windows PowerShell:
 
-### Running Locally Only
+```powershell
+.\translator-ui.ps1
+```
 
-1. Open the compose.yml file and either comment out or remove the section related to tunneling. Also, configure the `LLM_ENDPOINT` environment variable to match the endpoint of your active LLM server.
-2. Run the following command to launch LocaLingo:
+If Windows PowerShell 5 rejects the script under its execution policy, run it once without changing
+the persistent policy:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\translator-ui.ps1
+```
+
+Follow an organization-managed group policy if it disallows this. For a downloaded checkout under
+`RemoteSigned`, `Unblock-File .\translator-ui.ps1` is another option.
+
+The wrappers prefer `uv run --locked` to resolve the locked environment, then launch the controller
+directly with that environment's Python so `Ctrl+C` reaches it instead of an uv relay. If uv is
+unavailable, they use an existing `.venv`; without one they only use a local Python 3.12+
+installation when all dependencies are already present. They never install dependencies into the
+global Python environment.
+
+The service binds to `127.0.0.1:4568`. Add `--open-browser` on macOS/Linux/WSL or `-OpenBrowser`
+on PowerShell to open the browser after the health check succeeds.
+
+When started from an interactive ANSI-capable terminal, the wrappers show a small terminal
+controller. Press `q` then `y` to stop only the TranslatorUI server, `o` to open the UI again,
+`h` or `?` for help, and `j`/`k`/`f` to browse or follow the in-memory server log. `Ctrl+C` also
+stops the server safely. The browser is never closed by the launcher. Add `--no-tui` on
+macOS/Linux/WSL or `-NoTui` on PowerShell to keep plain foreground logs; non-interactive
+invocations automatically use that mode. The Windows VS Code integrated terminal also uses it
+automatically and runs Uvicorn in the foreground so that `Ctrl+C` remains reliable; use Windows
+Terminal or another supported external terminal for the TUI.
+
+On WSL, `--open-browser` and `o` use `wslview`, then `cmd.exe /c start`, to open the Windows
+default browser.
+
+### Sharing a checkout between Windows and WSL
+
+Windows and Linux virtual environments are not interchangeable. If WSL opens the same checkout
+through `/mnt/<drive>/...` and both platforms use the default `.venv`, WSL's uv can replace the
+Windows environment with a Linux one. Windows uv then cannot remove the Linux `lib64` link and
+stops with `failed to remove file '.venv/lib64'`.
+
+Separate checkouts are safest. If both platforms must share one checkout, use separate environment
+directories before starting the wrappers:
+
+```powershell
+# Windows PowerShell, from the repository root
+$env:UV_PROJECT_ENVIRONMENT = ".venv-win"
+.\translator-ui.ps1
+```
 
 ```bash
-sudo docker-compose up -d
+# WSL, from the same repository root
+export UV_PROJECT_ENVIRONMENT=.venv-linux
+./translator-ui.sh
 ```
 
-### Exposing the Service via Cloudflare Tunnel
+Both directories are ignored by Git. You may run `uv sync --locked` once in each environment with
+the corresponding variable set.
 
-For detailed instructions about Cloudflare's services, please refer to other documentation resources.
+To repair a default `.venv` already replaced by WSL, first stop all TranslatorUI, Python, and uv
+processes. First remove only `.venv` from Windows, then rerun the wrapper. `uv run --locked`
+automatically recreates the Windows environment, so a manual `uv sync` is normally unnecessary.
+This does not remove source files, `.env`, or `translator-ui.toml`.
 
-1. Open the compose.yml file and either comment out or remove the section related to the `LLM_ENDPOINT` environment variable. Set it to the endpoint of your active LLM server.
-2. Create a .env file and configure the Cloudflare Tunnel authentication token in the `TUNNEL_TOKEN` environment variable.
-3. If necessary, perform Cloudflare Access configuration. Without this setup, the translation service would become accessible globally to anyone.
-4. Run the following command to launch LocaLingo:
+```powershell
+# Windows PowerShell, from the repository root
+if (-not (Test-Path -LiteralPath .\pyproject.toml)) { throw "Run this from the repository root." }
+Remove-Item -LiteralPath .\.venv -Recurse -Force
+.\translator-ui.ps1
+```
+
+Only if Windows cannot delete `.venv` because of `failed to remove file '.venv/lib64'` or an
+access-denied error, use WSL. Verify that the current directory is the intended repository root,
+then remove only the virtual environment:
 
 ```bash
-sudo docker-compose up -d
+pwd
+test -f pyproject.toml && test -d .venv || exit 1
+rm -rf -- .venv
 ```
 
-## Important Notes
+Return to Windows PowerShell in the repository root and rerun the wrapper:
 
-1. LocaLingo utilizes PLaMo's specialized translation model developed by Preferred Networks. Using the PLaMo translation model requires compliance with the PLaMo Community License. Specifically, individuals and small-to-medium businesses can use it freely—both for personal use and in non-commercial settings. However, large-scale commercial usage requires a separately negotiated license agreement. For details, please refer to the [PLaMo Community License](https://tech.preferred.jp/ja/blog/plamo-community-license/) and the [PLaMo Community License Agreement](https://plamo.preferredai.jp/info/plamo-community-license-ja).
-2. LocaLingo itself does not contain any LLM server functionality. To operate it, you need a local LLM server supporting OpenAI-compatible APIs, such as LM Studio or Ollama.
-3. By default, all translations are recorded. To disable translation data storage, set the `SAVE_TRANSLATIONS` environment variable in the compose.yml file to `false`.
+```powershell
+.\translator-ui.ps1
+```
+
+## Provider configuration
+
+For multiple providers, copy `translator-ui.toml.template` to `translator-ui.toml` and set
+`TRANSLATOR_UI_CONFIG=translator-ui.toml` in `.env`. Keep API keys in `.env`; TOML contains only
+the environment-variable name, such as `api_key_env = "OPENAI_COMPAT_API_KEY"`.
+
+Enabled `openai_compatible` and ACP providers are available in the UI. ACP is disabled by default.
+When enabling it, use an agent-advertised mode only when appropriate and use an array-form `command`
+for a trusted local CLI only. Each translation uses a fresh child process and private temporary workspace; TranslatorUI
+offers no filesystem or terminal capability and rejects every permission request. Models and effort
+choices come from the agent's capabilities. An agent that does not expose a model selector appears
+as **Agent default** and retains its own default model. Network and authentication environment for
+the ACP child process are managed separately by the selected CLI. By default the child receives only
+process-runtime variables; list any additional variable *names* in the ACP provider's `environment`
+array (never put their values in TOML). TranslatorUI runs one ACP child process at a time to avoid
+accidentally overlapping agent sessions.
+
+`mode = "ask"` is appropriate only when the selected agent advertises that mode (such as IBM Bob).
+Codex ACP wrappers can advertise different mode identifiers; leave `mode` unset unless the wrapper
+advertises a supported mode.
+
+Before enabling ACP, verify the actual stdio command. Do not assume that a coding CLI exposes
+`<cli> acp`: Codex can use the separate wrapper
+`npx -y @agentclientprotocol/codex-acp@2.5.0`. This pinned package has limited translation
+coverage and must be revalidated before use. If no working ACP command is available, leave the
+provider disabled; TranslatorUI's OpenAI-compatible providers remain available.
+
+Each provider may retain its legacy `model` field and add one or more
+`[[providers.model_overrides]]` entries. An override supplies a display name and, where needed, a
+model-specific `translation_profile` such as `plamo3`; ordered `[[providers.model_rules]]` entries
+provide a validated regular-expression fallback. Exact overrides take precedence over rules, then
+the provider default. At startup and after **Reload settings**, the UI refreshes the provider's
+`/v1/models` catalog and offers only currently reported IDs, enriched by that TOML metadata. A model
+entry can expose an optional allowlist of `efforts`; only models that declare an `effort_request_field`
+send that value upstream. The **Reload settings** button rereads
+`.env` and the selected TOML without restarting the app. Parent-process environment
+variables override `.env`; failed reloads leave the running configuration unchanged.
+
+`max_tokens` is an output cap, not a model context-window setting. Its provider default is 4,096;
+set `max_tokens` in a `model_overrides` entry when a specific model needs a different cap. The
+model-specific value takes precedence. Keep the input plus output within the actual context length
+configured by the upstream runtime.
+
+To save named UI selections as profiles, set `allow_profile_writes = true`. TranslatorUI then writes
+only the fixed sidecar `translator-ui.profiles.toml` (or the configured `profiles_file`), never the
+connection TOML or `.env`. Profile writes use a revision check and atomic replacement, so a manual
+edit made after the profile list was loaded is rejected rather than overwritten.
+
+The `generic` translation profile sends a model-neutral translation instruction and preserves XML,
+HTML, placeholders, and code structure while translating natural-language text. It does not send
+PLaMo-specific prompt tokens or stop tokens.
+
+The UI remembers the selected provider, model, effort, source and target languages, and Japanese
+writing style in the browser's local storage for this origin. It does not store source text,
+translations, API keys, endpoints, or configuration values. Saved provider choices are validated
+against the current configuration on the next load; unavailable values fall back safely to the
+current defaults.
+
+## Proxy configuration
+
+TranslatorUI uses the standard HTTPX proxy environment variables for outbound OpenAI-compatible
+LLM requests: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`. Copy the commented examples
+in `.env.template` to the Git-ignored `.env` and set only the variables required by your network.
+For a typical HTTP forward proxy, use an `http://` proxy URL even when the LLM endpoint itself uses
+HTTPS. Keep local LM Studio traffic out of the proxy with:
+
+```dotenv
+NO_PROXY=localhost,127.0.0.1,::1
+```
+
+Proxy URLs may contain credentials, so treat them as secrets: place real values only in `.env` or
+the process environment, never in `translator-ui.toml`, documentation, logs, or commits. Proxy
+behavior and authentication compatibility are provided by HTTPX and the configured proxy. Proxy
+configuration applies process-wide; it cannot currently be selected per provider.
+
+## Verify
+
+```bash
+curl http://localhost:4568/health
+```
+
+The expected response is `{"status":"ok"}`. Translation requests are sent to the same-origin
+`/api/translate-text` endpoint and are delivered as Server-Sent Events.
+
+## License and attribution
+
+TranslatorUI is based on the MIT-licensed [LocaLingo](https://github.com/soukouki/LocaLingo)
+project. The upstream copyright notice and MIT license text are retained in
+[`LICENSE`](LICENSE); [`NOTICE`](NOTICE) records the baseline and provenance of
+upstream-derived portions.

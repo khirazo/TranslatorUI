@@ -1,1 +1,27 @@
 .env
+/translator-ui.toml
+/translator-ui.profiles.toml
+/data/
+
+# Python virtual environments, bytecode, test caches, and build artifacts.
+/.venv/
+/.venv-*/
+/venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local planning, working files, and machine-specific instructions.
+/work/
+/AGENTS.local.md
+/.claude/
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
