@@ -120,7 +120,8 @@ choices come from the agent's capabilities. An agent that does not expose a mode
 as **Agent default** and retains its own default model. Network and authentication environment for
 the ACP child process are managed separately by the selected CLI. By default the child receives only
 process-runtime variables; list any additional variable *names* in the ACP provider's `environment`
-array (never put their values in TOML).
+array (never put their values in TOML). TranslatorUI runs one ACP child process at a time to avoid
+accidentally overlapping agent sessions.
 
 `mode = "ask"` is appropriate only when the selected agent advertises that mode (such as IBM Bob).
 The reference Codex wrapper test left `mode` unset because its advertised mode identifiers differ.

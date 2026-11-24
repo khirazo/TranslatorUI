@@ -28,6 +28,10 @@ from app.providers.openai_compatible import (
 
 _PROTOCOL_VERSION = 1
 _POLL_SECONDS = 0.25
+_STDERR_TAIL_CHARS = 2_000
+# ACP agents are expensive local child processes.  Serializing them avoids
+# accidental concurrent agent sessions from repeated browser submissions.
+_ACP_SLOT = asyncio.Semaphore(1)
 
 
 class AcpProvider:
@@ -35,6 +39,8 @@ class AcpProvider:
 
     def __init__(self, settings: ProviderSettings) -> None:
         self._settings = settings
+        self._stderr_tasks: dict[asyncio.subprocess.Process, asyncio.Task[str]] = {}
+        self._auth_methods: tuple[str, ...] = ()
 
     async def translate(
         self,
@@ -45,11 +51,15 @@ class AcpProvider:
         options: TranslationOptions,
     ) -> AsyncIterator[str]:
         try:
-            async with asyncio.timeout(self._settings.timeout_seconds):
-                async for chunk in self._translate(
-                    text=text, source_lang=source_lang, target_lang=target_lang, options=options
-                ):
-                    yield chunk
+            async with _ACP_SLOT:
+                async with asyncio.timeout(self._settings.timeout_seconds):
+                    async for chunk in self._translate(
+                        text=text,
+                        source_lang=source_lang,
+                        target_lang=target_lang,
+                        options=options,
+                    ):
+                        yield chunk
         except TimeoutError as error:
             raise TranslationProviderError(
                 f"ACP agent did not finish within {self._settings.timeout_seconds} seconds."
@@ -58,55 +68,60 @@ class AcpProvider:
     async def discover_models(self) -> tuple[ModelSettings, ...]:
         """Read portable model/effort capabilities in a fresh restricted session."""
         try:
-            async with asyncio.timeout(self._settings.timeout_seconds):
-                command = self._command()
-                with tempfile.TemporaryDirectory(prefix="translator-ui-acp-") as raw_cwd:
-                    process = await self._start(command, Path(raw_cwd))
-                    try:
-                        await self._initialize(process)
-                        created = await self._request(
-                            process, 2, "session/new", {"cwd": raw_cwd, "mcpServers": []}
-                        )
-                        session_id = created.get("sessionId")
-                        if not isinstance(session_id, str) or not session_id:
-                            raise TranslationProviderError(
-                                "ACP agent did not create a translation session."
+            async with _ACP_SLOT:
+                async with asyncio.timeout(self._settings.timeout_seconds):
+                    command = self._command()
+                    with tempfile.TemporaryDirectory(prefix="translator-ui-acp-") as raw_cwd:
+                        process = await self._start(command, Path(raw_cwd))
+                        try:
+                            await self._initialize(process)
+                            created = await self._request(
+                                process, 2, "session/new", {"cwd": raw_cwd, "mcpServers": []}
                             )
-                        await self._set_mode(process, session_id, created)
-                        model_option = self._select_option(created.get("configOptions"), "model")
-                        if model_option is None:
-                            return (ModelSettings(id=ACP_DEFAULT_MODEL_ID, name="Agent default"),)
-                        discovered: list[ModelSettings] = []
-                        for request_id, model_id in enumerate(
-                            self._option_values(model_option), start=30
-                        ):
-                            result = await self._request(
-                                process,
-                                request_id,
-                                "session/set_config_option",
-                                {
-                                    "sessionId": session_id,
-                                    "configId": model_option["id"],
-                                    "value": model_id,
-                                },
-                            )
-                            effort_option = self._select_option(
-                                result.get("configOptions"), "thought_level"
-                            )
-                            efforts = self._option_values(effort_option)
-                            discovered.append(
-                                ModelSettings(
-                                    id=model_id,
-                                    efforts=efforts,
-                                    default_effort=efforts[0] if efforts else None,
-                                    effort_request_field="effort" if efforts else None,
+                            session_id = created.get("sessionId")
+                            if not isinstance(session_id, str) or not session_id:
+                                raise TranslationProviderError(
+                                    "ACP agent did not create a translation session."
                                 )
+                            await self._set_mode(process, session_id, created)
+                            model_option = self._select_option(
+                                created.get("configOptions"), "model"
                             )
-                        return tuple(discovered) or (
-                            ModelSettings(id=ACP_DEFAULT_MODEL_ID, name="Agent default"),
-                        )
-                    finally:
-                        await self._stop_tree(process)
+                            if model_option is None:
+                                return (
+                                    ModelSettings(id=ACP_DEFAULT_MODEL_ID, name="Agent default"),
+                                )
+                            discovered: list[ModelSettings] = []
+                            for request_id, model_id in enumerate(
+                                self._option_values(model_option), start=30
+                            ):
+                                result = await self._request(
+                                    process,
+                                    request_id,
+                                    "session/set_config_option",
+                                    {
+                                        "sessionId": session_id,
+                                        "configId": model_option["id"],
+                                        "value": model_id,
+                                    },
+                                )
+                                effort_option = self._select_option(
+                                    result.get("configOptions"), "thought_level"
+                                )
+                                efforts = self._option_values(effort_option)
+                                discovered.append(
+                                    ModelSettings(
+                                        id=model_id,
+                                        efforts=efforts,
+                                        default_effort=efforts[0] if efforts else None,
+                                        effort_request_field="effort" if efforts else None,
+                                    )
+                                )
+                            return tuple(discovered) or (
+                                ModelSettings(id=ACP_DEFAULT_MODEL_ID, name="Agent default"),
+                            )
+                        finally:
+                            await self._stop_tree(process)
         except TimeoutError as error:
             raise TranslationProviderError(
                 "ACP agent did not finish capability discovery within "
@@ -187,13 +202,16 @@ class AcpProvider:
         else:
             kwargs["start_new_session"] = True
         try:
-            return await asyncio.create_subprocess_exec(
+            process = await asyncio.create_subprocess_exec(
                 *command,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 **kwargs,
             )
+            assert process.stderr is not None
+            self._stderr_tasks[process] = asyncio.create_task(self._drain_stderr(process.stderr))
+            return process
         except OSError as error:
             raise TranslationProviderError("Could not start the configured ACP command.") from error
 
@@ -202,6 +220,14 @@ class AcpProvider:
         required = ("PATH", "Path", "SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec", "TEMP", "TMP")
         names = (*required, *self._settings.environment)
         return {name: os.environ[name] for name in names if name in os.environ}
+
+    @staticmethod
+    async def _drain_stderr(stream: asyncio.StreamReader) -> str:
+        """Prevent stderr backpressure while retaining only a bounded diagnostic tail."""
+        tail = ""
+        while chunk := await stream.read(1024):
+            tail = (tail + chunk.decode(errors="replace"))[-_STDERR_TAIL_CHARS:]
+        return tail
 
     async def _send(self, process: asyncio.subprocess.Process, message: dict[str, Any]) -> None:
         if process.stdin is None:
@@ -228,6 +254,16 @@ class AcpProvider:
         )
         if result.get("protocolVersion") != _PROTOCOL_VERSION:
             raise TranslationProviderError("ACP agent uses an unsupported protocol version.")
+        methods = result.get("authMethods")
+        self._auth_methods = (
+            tuple(
+                str(method.get("name") or method.get("id"))
+                for method in methods
+                if isinstance(method, dict)
+            )
+            if isinstance(methods, list)
+            else ()
+        )
 
     async def _read(self, process: asyncio.subprocess.Process) -> dict[str, Any]:
         if process.stdout is None:
@@ -266,7 +302,7 @@ class AcpProvider:
             if message.get("id") != request_id:
                 continue
             if "error" in message:
-                raise TranslationProviderError(f"ACP {method} request was rejected.")
+                raise self._rpc_error(method, message["error"])
             result = message.get("result")
             return result if isinstance(result, dict) else {}
 
@@ -280,6 +316,21 @@ class AcpProvider:
         else:
             response = {"error": {"code": -32601, "message": "Method not found"}}
         await self._send(process, {"jsonrpc": "2.0", "id": message["id"], **response})
+
+    def _rpc_error(self, method: str, error: Any) -> TranslationProviderError:
+        if not isinstance(error, dict):
+            return TranslationProviderError(f"ACP {method} request was rejected.")
+        message = str(error.get("message") or "request was rejected")[:500]
+        detail = f"ACP {method} failed: {message}"
+        lowered = message.lower()
+        if "trust" in lowered:
+            detail += " Use a different dedicated workspace or update the agent trust setting."
+        elif "auth" in lowered or "login" in lowered or error.get("code") == -32000:
+            methods = ", ".join(self._auth_methods) or "the agent's supported method"
+            detail += f" Log in with the agent CLI first ({methods})."
+        elif "licen" in lowered:
+            detail += " Accept the agent license before retrying."
+        return TranslationProviderError(detail)
 
     async def _set_mode(
         self, process: asyncio.subprocess.Process, session_id: str, created: dict[str, Any]
@@ -388,25 +439,28 @@ class AcpProvider:
             return
 
     async def _stop_tree(self, process: asyncio.subprocess.Process) -> None:
-        if process.returncode is not None:
-            return
-        if os.name == "nt":
-            with contextlib.suppress(OSError):
-                killer = await asyncio.create_subprocess_exec(
-                    "taskkill",
-                    "/T",
-                    "/F",
-                    "/PID",
-                    str(process.pid),
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
-                await asyncio.wait_for(killer.wait(), timeout=5)
-        else:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGTERM)
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(process.wait(), timeout=2)
         if process.returncode is None:
-            process.kill()
-            await process.wait()
+            if os.name == "nt":
+                with contextlib.suppress(OSError):
+                    killer = await asyncio.create_subprocess_exec(
+                        "taskkill",
+                        "/T",
+                        "/F",
+                        "/PID",
+                        str(process.pid),
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    await asyncio.wait_for(killer.wait(), timeout=5)
+            else:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGTERM)
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(process.wait(), timeout=2)
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
+        stderr_task = self._stderr_tasks.pop(process, None)
+        if stderr_task is not None:
+            with contextlib.suppress(asyncio.CancelledError):
+                await stderr_task
