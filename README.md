@@ -1,4 +1,7 @@
 # TranslatorUI
+## Screenshot
+
+![TranslatorUI text translation screen](docs/screenshot-text.png)
 
 TranslatorUI is a local web UI for streaming text translation through OpenAI-compatible LLM
 endpoints. It supports LM Studio and other compatible providers. PDF translation is intentionally

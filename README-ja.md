@@ -1,4 +1,7 @@
 # TranslatorUI
+## スクリーンショット
+
+![TranslatorUI のテキスト翻訳画面](docs/screenshot-text.png)
 
 TranslatorUI は、OpenAI 互換 LLM エンドポイントを使って逐次テキスト翻訳を行うローカル Web UI です。
 LM Studio をはじめとする互換プロバイダーに対応します。PDF 翻訳は意図的に対象外であり、このリポジトリーは
