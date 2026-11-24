@@ -8,7 +8,7 @@ endpoints. It supports LM Studio and other compatible providers. PDF translation
 out of scope: this repository does not download, bundle, or run PDFMathTranslate.
 
 The project is based on the MIT-licensed LocaLingo baseline; its MIT license is retained in
-[`LICENSE`](LICENSE).
+[`LICENSE`](LICENSE). See [`NOTICE`](NOTICE) for upstream attribution and provenance.
 
 ## Run locally
 
@@ -127,13 +127,14 @@ array (never put their values in TOML). TranslatorUI runs one ACP child process 
 accidentally overlapping agent sessions.
 
 `mode = "ask"` is appropriate only when the selected agent advertises that mode (such as IBM Bob).
-The reference Codex wrapper test left `mode` unset because its advertised mode identifiers differ.
+Codex ACP wrappers can advertise different mode identifiers; leave `mode` unset unless the wrapper
+advertises a supported mode.
 
 Before enabling ACP, verify the actual stdio command. Do not assume that a coding CLI exposes
-`<cli> acp`: the reference Codex integration used the separate wrapper
-`npx -y @agentclientprotocol/codex-acp@2.5.0`. This pinned package was only given a limited
-translation test and must be revalidated before use. If no working ACP command is available, leave
-the provider disabled; TranslatorUI's OpenAI-compatible providers remain available.
+`<cli> acp`: Codex can use the separate wrapper
+`npx -y @agentclientprotocol/codex-acp@2.5.0`. This pinned package has limited translation
+coverage and must be revalidated before use. If no working ACP command is available, leave the
+provider disabled; TranslatorUI's OpenAI-compatible providers remain available.
 
 Each provider may retain its legacy `model` field and add one or more
 `[[providers.model_overrides]]` entries. An override supplies a display name and, where needed, a
@@ -191,3 +192,10 @@ curl http://localhost:4568/health
 
 The expected response is `{"status":"ok"}`. Translation requests are sent to the same-origin
 `/api/translate-text` endpoint and are delivered as Server-Sent Events.
+
+## License and attribution
+
+TranslatorUI is based on the MIT-licensed [LocaLingo](https://github.com/soukouki/LocaLingo)
+project. The upstream copyright notice and MIT license text are retained in
+[`LICENSE`](LICENSE); [`NOTICE`](NOTICE) records the baseline and provenance of
+upstream-derived portions.

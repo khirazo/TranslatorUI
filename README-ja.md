@@ -8,7 +8,7 @@ LM Studio をはじめとする互換プロバイダーに対応します。PDF 
 PDFMathTranslate を取得・同梱・実行しません。
 
 本プロジェクトは MIT ライセンスの LocaLingo を基にしており、MIT ライセンスは
-[`LICENSE`](LICENSE) に保持しています。
+[`LICENSE`](LICENSE) に保持しています。upstream の帰属と来歴は [`NOTICE`](NOTICE) を参照してください。
 
 ## ローカル起動
 
@@ -117,12 +117,12 @@ rm -rf -- .venv
 ネットワーク設定・認証の**変数名**だけを `environment` 配列に指定します。値を TOML に書かないでください。
 意図しないエージェントセッションの重複を防ぐため、TranslatorUI は ACP 子プロセスを同時に 1 本だけ実行します。
 
-`ask` は IBM Bob などが広告する mode の例です。リファレンスの Codex wrapper 試験では mode 名が異なるため、
-`mode` を未指定にしていました。
+`ask` は IBM Bob などが広告する mode の例です。Codex ACP wrapper は異なる mode 名を広告する場合があるため、
+対応する mode が広告されていなければ `mode` を未指定にしてください。
 
 ACP を有効にする前に、実際の stdio コマンドを確認してください。コーディング CLI が `<CLI> acp` を提供するとは
-限りません。リファレンス実装の Codex は別ラッパーの `npx -y @agentclientprotocol/codex-acp@2.5.0` を使いました。
-これは限定的な翻訳試験だけの固定版なので、使用前に再検証が必要です。動作する ACP コマンドがなければ ACP Provider は
+限りません。Codex では別ラッパーの `npx -y @agentclientprotocol/codex-acp@2.5.0` を利用できます。
+これは翻訳の検証範囲が限定的な固定版なので、使用前に再検証が必要です。動作する ACP コマンドがなければ ACP Provider は
 無効のままにし、OpenAI互換 Provider を利用してください。
 
 各Providerは従来どおりの `model` を残したまま、`[[providers.model_overrides]]` で複数モデルの表示名と
@@ -174,3 +174,9 @@ curl http://localhost:4568/health
 
 期待する応答は `{"status":"ok"}` です。翻訳要求は同一オリジンの `/api/translate-text` に送られ、
 Server-Sent Events で逐次返却されます。
+
+## ライセンスと帰属
+
+TranslatorUI は MIT ライセンスの [LocaLingo](https://github.com/soukouki/LocaLingo) を基にしています。
+upstream の著作権表示と MIT ライセンス文は [`LICENSE`](LICENSE) に保持し、採用した基準コミットと
+upstream 由来部分の来歴は [`NOTICE`](NOTICE) に記録しています。

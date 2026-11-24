@@ -1,8 +1,4 @@
-"""ACP translation provider using a fresh, restricted stdio session per request.
-
-This adapts the user-authored reference ``work/ref/LLMtranslator/acp_client.py``
-to TranslatorUI's async streaming-provider boundary.
-"""
+"""ACP translation provider using a fresh, restricted stdio session per request."""
 
 from __future__ import annotations
 
