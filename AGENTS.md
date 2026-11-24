@@ -22,8 +22,10 @@ or copy credentials from it into source code, logs, or documentation.
 
 ## Development conventions
 
-- Keep `main` as the upstream baseline. Make product work in `develop` or `feature/<name>` branches;
-  the current Python migration branch is `feature/python-migration`.
+- Before initial publication, `main` is the upstream baseline. After publishing TranslatorUI, use
+  `main` as its stable default branch and retain LocaLingo as the `upstream` remote. Make product
+  work in `develop` or `feature/<name>` branches; the current Python migration branch is
+  `feature/python-migration`.
 - Make focused changes and avoid unrelated formatting changes.
 - Do not commit credentials, API tokens, translation data, or machine-specific paths.
 - Update public documentation when a user-visible behavior, configuration option, or deployment procedure changes.
