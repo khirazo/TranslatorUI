@@ -218,3 +218,14 @@ TranslatorUI is based on the MIT-licensed [LocaLingo](https://github.com/soukouk
 project. The upstream copyright notice and MIT license text are retained in
 [`LICENSE`](LICENSE); [`NOTICE`](NOTICE) records the baseline and provenance of
 upstream-derived portions.
+
+### PLaMo 3 Translate model terms
+
+Preferred Networks (PFN) distributes the PLaMo 3 Translate model weights (0.8B, 2B, 8B, and 31B) under the
+[PLaMo Community License](https://plamo.preferredai.jp/info/plamo-community-license-en).
+PFN's model cards say personal and non-commercial
+use is free without prior registration. Commercial use requires registration or a separate
+agreement, depending on revenue or sales.
+
+Before using a model, find its model card in the [official PLaMo 3 Translate collection](https://huggingface.co/collections/pfnet/plamo-3-translate).
+Review its License section for thresholds and procedures, and consult the full license for the governing terms.

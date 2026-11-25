@@ -202,3 +202,14 @@ Server-Sent Events で逐次返却されます。
 TranslatorUI は MIT ライセンスの [LocaLingo](https://github.com/soukouki/LocaLingo) を基にしています。
 upstream の著作権表示と MIT ライセンス文は [`LICENSE`](LICENSE) に保持し、採用した基準コミットと
 upstream 由来部分の来歴は [`NOTICE`](NOTICE) に記録しています。
+
+### PLaMo 3 Translate のモデル利用条件
+
+Preferred Networks（PFN）は、PLaMo 3 Translate（0.8B、2B、8B、31B）のモデル重みを
+[PLaMo Community License](https://plamo.preferredai.jp/info/plamo-community-license-ja) で配布しています。
+PFN のモデルカードによると、個人利用や非商用利用は事前登録不要で無償です。商用利用には、売上高などの条件に応じて、
+利用登録または個別のライセンス契約が必要です。
+
+利用前に、[PLaMo 3 Translate の公式モデル一覧](https://huggingface.co/collections/pfnet/plamo-3-translate) から
+使用するモデルを選び、モデルカードのライセンス欄で適用条件と手続きを確認してください。
+正式な利用条件はライセンスの全文を参照してください。
