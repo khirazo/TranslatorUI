@@ -1,4 +1,7 @@
 # TranslatorUI
+
+[English version](README.md)
+
 ## スクリーンショット
 
 ![TranslatorUI のテキスト翻訳画面](docs/screenshot-text.png)
