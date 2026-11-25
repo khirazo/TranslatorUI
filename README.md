@@ -109,6 +109,14 @@ Return to Windows PowerShell in the repository root and rerun the wrapper:
 .\translator-ui.ps1
 ```
 
+## Display language
+
+Choose English or Japanese under **Translation settings → Display language**.
+The browser remembers your selection. A URL such as `?locale=ja` overrides it
+for that page without changing the saved preference. Without either setting,
+TranslatorUI uses a supported browser language or falls back to English.
+The display language is independent of the source and target languages.
+
 ## Provider configuration
 
 For multiple providers, copy `translator-ui.toml.template` to `translator-ui.toml` and set

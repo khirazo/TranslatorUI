@@ -1,3 +1,6 @@
+import json
+import re
+
 from app.config import ProviderSettings, Settings
 from app.main import create_app
 from fastapi.testclient import TestClient
@@ -43,17 +46,30 @@ def test_root_serves_the_python_ui() -> None:
     assert "📋" not in response.text
     assert "❌" not in response.text
     assert 'stroke="currentColor"' in response.text
-    assert "設定を再読み込み" in response.text
-    assert 'aria-label="通知を閉じる"' in response.text
+    assert "t('reload')" in response.text
+    assert """:aria-label="t('dismiss')" """ in response.text
     assert "dismissSettingsMessage" in response.text
     assert "settingsMessage = ''; this.settingsError = false" in response.text
-    assert "保存済みプロファイル" in response.text
+    assert "t('profiles')" in response.text
     assert "saveProfile" in response.text
     assert "deleteProfile" in response.text
     assert "selectionChanged() { this.profileId = ''; this.persistUiState(); }" in response.text
     assert "translation-settings" in response.text
     assert "isSettingsExpanded: false" in response.text
     assert 'aria-controls="translation-settings"' in response.text
+
+
+def test_locale_assets_have_matching_message_keys_and_parameters() -> None:
+    with TestClient(create_app(settings=Settings())) as client:
+        script = client.get("/static/locale.js")
+        japanese = client.get("/static/locales/ja.json")
+
+    assert script.status_code == japanese.status_code == 200
+    english_messages, _ = json.JSONDecoder().raw_decode(script.text.split("const english = ", 1)[1])
+    japanese_messages = japanese.json()
+    assert english_messages.keys() == japanese_messages.keys()
+    for key, message in english_messages.items():
+        assert re.findall(r"\{\w+\}", message) == re.findall(r"\{\w+\}", japanese_messages[key])
 
 
 def test_stylesheet_is_served_locally() -> None:

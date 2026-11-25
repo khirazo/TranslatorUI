@@ -137,3 +137,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .translation-panel { padding: 1rem; }
   .language-select { min-width: 0; }
 }
+[v-cloak] {
+  display: none;
+}
