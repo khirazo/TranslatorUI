@@ -30,6 +30,9 @@ prompt. The shortcut starts the server and opens the browser when it is ready. I
 project folder, run the shortcut creator again and confirm replacement. This creates a shortcut;
 it does not install dependencies or configure a provider. The creator and shortcut use a
 process-only execution policy bypass; follow any organization-managed policy that disallows it.
+The shortcut uses Windows Terminal when available; otherwise it starts the server directly in a
+console with foreground logs. Press Ctrl+C to stop it. Recreate existing shortcuts after updating
+the shortcut creator. If Windows Terminal fails to open, check its installation.
 
 If Windows PowerShell 5 rejects the script under its execution policy, run it once without changing
 the persistent policy:

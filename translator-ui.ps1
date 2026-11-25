@@ -8,7 +8,9 @@ param(
 
     [switch]$OpenBrowser,
 
-    [switch]$NoTui
+    [switch]$NoTui,
+
+    [switch]$DirectServer
 )
 
 $ErrorActionPreference = "Stop"
@@ -138,8 +140,8 @@ try {
     }
 
     $browserJob = $null
-    if ($env:TERM_PROGRAM -ieq "vscode") {
-        Write-Host "VS Code integrated terminal detected; starting Uvicorn directly so Ctrl+C stops it reliably."
+    if ($DirectServer -or $env:TERM_PROGRAM -ieq "vscode") {
+        Write-Host "Starting Uvicorn directly; press Ctrl+C to stop."
         if ($OpenBrowser) {
             $browserHost = if ($ListenHost -eq "0.0.0.0") { "127.0.0.1" } elseif ($ListenHost -eq "::") { "[::1]" } else { $ListenHost }
             $browserJob = Start-BrowserWhenReady -Url "http://$($browserHost):$Port"

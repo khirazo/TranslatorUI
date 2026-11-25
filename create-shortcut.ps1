@@ -20,8 +20,16 @@ try {
     $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($path)
-    $shortcut.TargetPath = $powershell
-    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -OpenBrowser"
+    $terminal = Get-Command -Name 'wt.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($terminal) {
+        $shortcut.TargetPath = $terminal.Source
+        $shortcut.Arguments = "new-tab --startingDirectory `"$PSScriptRoot`" `"$powershell`" -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -OpenBrowser"
+        Write-Host 'Using Windows Terminal. If it fails to open, check your Windows Terminal installation.'
+    } else {
+        $shortcut.TargetPath = $powershell
+        $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -OpenBrowser -DirectServer"
+        Write-Host 'Windows Terminal not found; the shortcut will show logs. Press Ctrl+C to stop.'
+    }
     $shortcut.WorkingDirectory = $PSScriptRoot
     $shortcut.Description = 'Start TranslatorUI'
     $shortcut.Save()
