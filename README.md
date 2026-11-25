@@ -25,6 +25,12 @@ On Windows PowerShell:
 .\translator-ui.ps1
 ```
 
+To create a desktop shortcut on Windows, double-click `create-shortcut.cmd` and follow the
+prompt. The shortcut starts the server and opens the browser when it is ready. If you move the
+project folder, run the shortcut creator again and confirm replacement. This creates a shortcut;
+it does not install dependencies or configure a provider. The creator and shortcut use a
+process-only execution policy bypass; follow any organization-managed policy that disallows it.
+
 If Windows PowerShell 5 rejects the script under its execution policy, run it once without changing
 the persistent policy:
 
