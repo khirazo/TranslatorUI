@@ -5,7 +5,6 @@ set -euo pipefail
 listen_host="127.0.0.1"
 port="4568"
 open_browser=false
-no_tui=false
 minimum_python_version="3.12"
 
 usage() {
@@ -16,7 +15,6 @@ Options:
   --listen-host HOST       Address to bind (default: 127.0.0.1)
   --port PORT              Port to bind (default: 4568)
   --open-browser           Open the UI after its health check succeeds
-  --no-tui                 Disable the interactive terminal controller
   -h, --help               Show this help message
 EOF
 }
@@ -36,7 +34,7 @@ while [ "$#" -gt 0 ]; do
             shift
             ;;
         --no-tui)
-            no_tui=true
+            # Accepted for older commands.
             shift
             ;;
         -h|--help)
@@ -133,26 +131,13 @@ launcher_args=(-m app.launcher --host "$listen_host" --port "$port")
 if [ "$open_browser" = true ]; then
     launcher_args+=(--open-browser)
 fi
-if [ "$no_tui" = true ]; then
-    launcher_args+=(--no-tui)
-fi
 
 if [ "$has_uv" = true ]; then
     if ! launcher_python="$(uv run --locked -- python -c 'import sys; print(sys.executable)')"; then
         echo "uv could not resolve the locked Python environment for TranslatorUI." >&2
         exit 1
     fi
-    if "$launcher_python" "${launcher_args[@]}"; then
-        exit_code=0
-    else
-        exit_code=$?
-    fi
-else
-    if "$python" "${launcher_args[@]}"; then
-        exit_code=0
-    else
-        exit_code=$?
-    fi
+    python="$launcher_python"
 fi
 
-exit "$exit_code"
+exec "$python" "${launcher_args[@]}"

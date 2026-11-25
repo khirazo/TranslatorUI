@@ -8,6 +8,7 @@ param(
 
     [switch]$OpenBrowser,
 
+    # Accepted for older commands and shortcuts.
     [switch]$NoTui,
 
     [switch]$DirectServer
@@ -60,27 +61,6 @@ function Get-LocalPython {
     return @{ Executable = "python"; Arguments = @() }
 }
 
-function Start-BrowserWhenReady {
-    param([string]$Url)
-
-    Start-Job -ArgumentList $Url -ScriptBlock {
-        param([string]$TargetUrl)
-
-        for ($attempt = 0; $attempt -lt 60; $attempt++) {
-            try {
-                $response = Invoke-WebRequest -Uri "$TargetUrl/health" -TimeoutSec 1 -ErrorAction Stop
-                if ($response.StatusCode -eq 200) {
-                    Start-Process $TargetUrl
-                    return
-                }
-            } catch {
-                # The server is still starting or has exited.
-            }
-            Start-Sleep -Milliseconds 500
-        }
-    }
-}
-
 if (-not (Test-Path $envPath)) {
     if (-not (Test-Path $envTemplatePath)) {
         throw "Environment template file was not found: $envTemplatePath"
@@ -112,12 +92,8 @@ if ($null -eq $uv) {
 }
 
 $launcherArguments = @("-m", "app.launcher", "--host", $ListenHost, "--port", "$Port")
-$uvicornArguments = @("-m", "uvicorn", "app.main:app", "--app-dir", "translator_ui", "--host", $ListenHost, "--port", "$Port")
 if ($OpenBrowser) {
     $launcherArguments += "--open-browser"
-}
-if ($NoTui) {
-    $launcherArguments += "--no-tui"
 }
 
 Push-Location $repositoryRoot
@@ -139,23 +115,9 @@ try {
         $runtime = $python
     }
 
-    $browserJob = $null
-    if ($DirectServer -or $env:TERM_PROGRAM -ieq "vscode") {
-        Write-Host "Starting Uvicorn directly; press Ctrl+C to stop."
-        if ($OpenBrowser) {
-            $browserHost = if ($ListenHost -eq "0.0.0.0") { "127.0.0.1" } elseif ($ListenHost -eq "::") { "[::1]" } else { $ListenHost }
-            $browserJob = Start-BrowserWhenReady -Url "http://$($browserHost):$Port"
-        }
-        & $runtime.Executable @($runtime.Arguments) @uvicornArguments
-    } else {
-        & $runtime.Executable @($runtime.Arguments) @launcherArguments
-    }
+    & $runtime.Executable @($runtime.Arguments) @launcherArguments
     $exitCode = $LASTEXITCODE
 } finally {
-    if ($null -ne $browserJob) {
-        Stop-Job -Job $browserJob -ErrorAction SilentlyContinue
-        Remove-Job -Job $browserJob -Force -ErrorAction SilentlyContinue
-    }
     if ($null -eq $previousPythonPath) {
         Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
     } else {

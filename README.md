@@ -30,9 +30,7 @@ prompt. The shortcut starts the server and opens the browser when it is ready. I
 project folder, run the shortcut creator again and confirm replacement. This creates a shortcut;
 it does not install dependencies or configure a provider. The creator and shortcut use a
 process-only execution policy bypass; follow any organization-managed policy that disallows it.
-The shortcut uses Windows Terminal when available; otherwise it starts the server directly in a
-console with foreground logs. Press Ctrl+C to stop it. Recreate existing shortcuts after updating
-the shortcut creator. If Windows Terminal fails to open, check its installation.
+Recreate existing shortcuts to use the current launch settings.
 
 If Windows PowerShell 5 rejects the script under its execution policy, run it once without changing
 the persistent policy:
@@ -44,8 +42,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\translator-ui.ps1
 Follow an organization-managed group policy if it disallows this. For a downloaded checkout under
 `RemoteSigned`, `Unblock-File .\translator-ui.ps1` is another option.
 
-The wrappers prefer `uv run --locked` to resolve the locked environment, then launch the controller
-directly with that environment's Python so `Ctrl+C` reaches it instead of an uv relay. If uv is
+The wrappers prefer `uv run --locked` to resolve the locked environment, then run the server in the foreground
+with that environment's Python, without an uv relay. If uv is
 unavailable, they use an existing `.venv`; without one they only use a local Python 3.12+
 installation when all dependencies are already present. They never install dependencies into the
 global Python environment.
@@ -53,17 +51,9 @@ global Python environment.
 The service binds to `127.0.0.1:4568`. Add `--open-browser` on macOS/Linux/WSL or `-OpenBrowser`
 on PowerShell to open the browser after the health check succeeds.
 
-When started from an interactive ANSI-capable terminal, the wrappers show a small terminal
-controller. Press `q` then `y` to stop only the TranslatorUI server, `o` to open the UI again,
-`h` or `?` for help, and `j`/`k`/`f` to browse or follow the in-memory server log. `Ctrl+C` also
-stops the server safely. The browser is never closed by the launcher. Add `--no-tui` on
-macOS/Linux/WSL or `-NoTui` on PowerShell to keep plain foreground logs; non-interactive
-invocations automatically use that mode. The Windows VS Code integrated terminal also uses it
-automatically and runs Uvicorn in the foreground so that `Ctrl+C` remains reliable; use Windows
-Terminal or another supported external terminal for the TUI.
-
-On WSL, `--open-browser` and `o` use `wslview`, then `cmd.exe /c start`, to open the Windows
-default browser.
+The server displays logs in the terminal. Press `Ctrl+C` to stop it. If you launched it in a
+separate window, you can also close that window. On WSL, `--open-browser` uses `wslview` or
+`cmd.exe /c start` to open the Windows default browser.
 
 ### Sharing a checkout between Windows and WSL
 
@@ -183,6 +173,15 @@ writing style in the browser's local storage for this origin. It does not store 
 translations, API keys, endpoints, or configuration values. Saved provider choices are validated
 against the current configuration on the next load; unavailable values fall back safely to the
 current defaults.
+
+## Translation history
+
+Saving translation history is disabled by default. To enable it, set `save_translations = true`
+under `[app]` in `translator-ui.toml`. If you use the legacy `.env` configuration without a TOML
+file, set `SAVE_TRANSLATIONS=true` instead.
+
+The first saved translation creates `data/translations.json` in the project root. The file
+contains the original and translated text in plain JSON.
 
 ## Proxy configuration
 

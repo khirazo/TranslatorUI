@@ -31,9 +31,7 @@ Windows のデスクトップにショートカットを作成するには、`cr
 この操作はショートカットの作成のみを行い、依存関係のインストールやプロバイダーの設定は行いません。
 作成時とショートカットからの起動時には、そのプロセスに限り Execution Policy をバイパスします。
 組織のポリシーで禁止されている場合は、そのポリシーに従ってください。
-Windows Terminal が利用可能な場合はそれを使い、見つからない場合はコンソールでサーバーを直接起動して
-ログを表示します。停止するには `Ctrl+C` を押してください。作成スクリプトの更新後は、既存の
-ショートカットを作り直してください。Windows Terminal が開かない場合は、そのインストールを確認してください。
+以前作成したショートカットには、作り直すと現在の起動設定が反映されます。
 
 Windows PowerShell 5 で Execution Policy により読み込みが拒否される場合は、ポリシーを恒久変更せず、
 その起動だけ次のように実行できます。
@@ -45,22 +43,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\translator-ui.ps1
 組織のグループポリシーがこれを禁止する場合は、そのポリシーに従ってください。ダウンロードしたリポジトリーでは、
 ポリシーが `RemoteSigned` の場合に限り `Unblock-File .\translator-ui.ps1` も選択肢です。
 
-ラッパーは `uv run --locked` を優先してロック済み環境を解決してから、その環境のPythonでlauncherを直接起動します。
-これにより `Ctrl+C` はuvの中継ではなくlauncherへ届きます。uv がない場合は既存の `.venv` を使い、`.venv` も
+ラッパーは `uv run --locked` を優先してロック済み環境を解決し、その環境の Python でサーバーを前景起動します。
+uv がない場合は既存の `.venv` を使い、`.venv` も
 ない場合は依存関係がすでにある Python 3.12 以上だけを利用します。グローバル Python 環境へ依存関係を導入する
 ことはありません。
 
 サービスは `127.0.0.1:4568` にバインドします。ヘルスチェック成功後にブラウザーを開くには、
 macOS/Linux/WSL では `--open-browser`、PowerShell では `-OpenBrowser` を指定してください。
 
-ANSI対応の対話端末では、起動ラッパーが簡易TUIを表示します。`q` の後に `y` を押すと TranslatorUI の
-サーバーだけを終了し、`o` はUIを再度ブラウザーで開きます。`h` または `?` はヘルプ、`j` / `k` / `f` は
-メモリー上のサーバーログの閲覧／末尾追従です。`Ctrl+C` でも安全に停止できます。launcherがブラウザーを閉じる
-ことはありません。macOS/Linux/WSL では `--no-tui`、PowerShell では `-NoTui` を指定すると前景ログ表示に
-戻ります。非対話起動に加え、Windows上の VS Code 統合ターミナルでは `Ctrl+C` を確実に扱うため、自動的に
-launcherを迂回してUvicornを直接前景起動します。TUIはWindows Terminalまたは外部の対応端末で利用してください。
-WSLでは `--open-browser` と `o` が `wslview`、次に `cmd.exe /c start` を使ってWindows側の既定ブラウザーを
-開きます。
+サーバーは端末にログを表示します。停止するには `Ctrl+C` を押してください。専用ウィンドウから起動した場合は、
+そのウィンドウを閉じても停止できます。WSL の `--open-browser` は `wslview` または `cmd.exe /c start` を使って
+Windows 側の既定ブラウザーを開きます。
 
 ### Windows と WSL で同じチェックアウトを使う場合
 
@@ -166,6 +159,15 @@ profile を上書きしません。
 画面は、選択したプロバイダー、モデル、effort、原文/訳文言語、日本語文体を、この origin のブラウザー
 ローカルストレージに記憶します。原文・翻訳結果・API キー・接続先・設定値は保存しません。次回起動時は
 現在の設定と照合し、利用できなくなった選択値を安全に既定値へ戻します。
+
+## 翻訳履歴
+
+翻訳履歴の保存は既定で無効です。有効にするには、`translator-ui.toml` の `[app]` に
+`save_translations = true` を設定します。TOML を使わず、従来の `.env` で設定している場合は、
+`SAVE_TRANSLATIONS=true` を指定してください。
+
+最初の保存時に、プロジェクト直下に `data/translations.json` が作成されます。原文と訳文は
+平文の JSON として記録されます。
 
 ## プロキシー設定
 

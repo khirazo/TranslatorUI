@@ -3,6 +3,7 @@
 
 [app]
 default_provider = "openai-compatible"
+# Set to true to save original and translated text as plain JSON in data/translations.json.
 save_translations = false
 # Profile writes are opt-in.  When enabled, the GUI writes only this dedicated sidecar TOML.
 allow_profile_writes = false
