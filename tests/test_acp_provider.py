@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
@@ -95,6 +96,14 @@ for line in sys.stdin:
         time.sleep(60)
 """
 
+EXITING_AGENT = """
+import sys
+
+sys.stderr.write('Bob failed: {"token":"not-for-logs"}\\n')
+sys.stderr.flush()
+raise SystemExit(23)
+"""
+
 
 def write_agent(tmp_path: Path, source: str) -> tuple[str, str]:
     agent = tmp_path / "fake_acp_agent.py"
@@ -106,6 +115,14 @@ def settings_for(command: tuple[str, ...], timeout_seconds: int = 10) -> Provide
     return ProviderSettings(
         id="acp", name="Test ACP", kind="acp", command=command, timeout_seconds=timeout_seconds
     )
+
+
+def test_acp_provider_uses_the_tracked_workspace() -> None:
+    workspace = AcpProvider._workspace()
+
+    assert workspace.name == "acp-workspace"
+    assert workspace.parent == Path(__file__).resolve().parents[1]
+    assert (workspace / ".gitkeep").is_file()
 
 
 @pytest.mark.asyncio
@@ -125,7 +142,8 @@ async def test_acp_provider_streams_chunks_and_rejects_permission(tmp_path) -> N
 
 
 @pytest.mark.asyncio
-async def test_acp_provider_uses_agent_default_when_no_model_capability(tmp_path) -> None:
+async def test_acp_provider_uses_agent_default_when_no_model_capability(tmp_path, caplog) -> None:
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
     provider = AcpProvider(settings_for(write_agent(tmp_path, FAKE_AGENT)))
 
     models = await provider.discover_models()
@@ -133,6 +151,20 @@ async def test_acp_provider_uses_agent_default_when_no_model_capability(tmp_path
     assert [(model.id, model.display_name, model.efforts) for model in models] == [
         ("agent-default", "Agent default", ())
     ]
+    assert "ACP provider acp: initializing agent" in caplog.text
+    assert "ACP provider acp: creating capability session" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_acp_provider_logs_exit_code_phase_and_redacted_stderr(tmp_path, caplog) -> None:
+    provider = AcpProvider(settings_for(write_agent(tmp_path, EXITING_AGENT)))
+
+    with pytest.raises(TranslationProviderError, match=r"initialize \(exit code 23\)"):
+        await provider.discover_models()
+
+    assert "Standard error tail" in caplog.text
+    assert '"token":"[REDACTED]"' in caplog.text
+    assert "not-for-logs" not in caplog.text
 
 
 def test_acp_provider_passes_only_explicit_environment(monkeypatch) -> None:

@@ -50,17 +50,37 @@ translation_profile = "generic"
 id = "gpt-5.4-mini"
 name = "GPT-5.4 mini"
 
-# ACP is opt-in and requires an ACP stdio command.  A direct `codex acp` command is not required:
-# Codex can use the separate Node wrapper below.  Verify its version before use.
+# ACP is opt-in and requires an ACP stdio command. The examples below completed basic text
+# translations on 2026-11-26; revalidate their pinned wrapper versions before production use.
+# A direct `codex acp` command is not required: Codex uses its separate Node wrapper.
 [[providers]]
 id = "codex-acp"
 name = "Codex ACP (wrapper)"
 kind = "acp"
 enabled = false
-# Verified example (2026-11-08): npx -y @agentclientprotocol/codex-acp@2.5.0
 command = ["npx", "-y", "@agentclientprotocol/codex-acp@2.5.0"]
+# ACP sessions use the repository's dedicated empty acp-workspace directory.
+# Keep it free of translation inputs, credentials, and other application files.
 # Pass only the named variables to the ACP child process.  Keep credentials out of this file.
-# The Codex wrapper may need these user-profile locations to find its own login/configuration.
+# Some ACP wrappers may need user-profile locations to find their own login/configuration.
 # environment = ["USERPROFILE", "APPDATA", "LOCALAPPDATA"]
 # environment = ["HTTPS_PROXY"]
+timeout_seconds = 180
+
+[[providers]]
+id = "ibm-bob-acp"
+name = "IBM Bob (ACP)"
+kind = "acp"
+enabled = false
+command = ["bob", "acp", "--disable-mcp", "--disable-subagents"]
+timeout_seconds = 180
+# Bob advertises this read-oriented mode. Leave mode unset for agents that do not advertise it.
+mode = "ask"
+
+[[providers]]
+id = "claude-agent-acp"
+name = "Claude Agent (ACP)"
+kind = "acp"
+enabled = false
+command = ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.101.0"]
 timeout_seconds = 180

@@ -124,7 +124,7 @@ rm -rf -- .venv
 
 有効な `openai_compatible` と ACP プロバイダーを UI で選択できます。ACP は既定で無効です。有効化する際は、
 利用するエージェントが提供する場合だけ `mode = "ask"` を明示し、信頼できるローカル CLI だけを `command` 配列で指定してください。各翻訳は専用の
-一時ワークスペースと新しい子プロセスで実行され、filesystem/terminal 能力は提供せず、permission 要求は拒否します。
+リポジトリの専用空ディレクトリ `acp-workspace` と新しい子プロセスで実行され、filesystem/terminal 能力は提供せず、permission 要求は拒否します。
 モデルと effort はエージェントの capability から取得します。取得できないエージェントは「Agent default」として
 エージェント既定のモデルで動作します。ACP 子プロセスへ渡す環境変数は実行に必要な最小限だけであり、追加が必要な
 ネットワーク設定・認証の**変数名**だけを `environment` 配列に指定します。値を TOML に書かないでください。
@@ -134,8 +134,9 @@ rm -rf -- .venv
 対応する mode が広告されていなければ `mode` を未指定にしてください。
 
 ACP を有効にする前に、実際の stdio コマンドを確認してください。コーディング CLI が `<CLI> acp` を提供するとは
-限りません。Codex では別ラッパーの `npx -y @agentclientprotocol/codex-acp@2.5.0` を利用できます。
-これは翻訳の検証範囲が限定的な固定版なので、使用前に再検証が必要です。動作する ACP コマンドがなければ ACP Provider は
+限りません。Codex では別ラッパーの `npx -y @agentclientprotocol/codex-acp@2.5.0` を利用できます。テンプレートには
+IBM Bob Shell と Claude Agent の例もあり、3種類とも2026年11月26日に基本的なテキスト翻訳の成功を確認しています。
+固定した wrapper とエージェントの挙動は使用前に再検証してください。動作する ACP コマンドがなければ ACP Provider は
 無効のままにし、OpenAI互換 Provider を利用してください。
 
 各Providerは従来どおりの `model` を残したまま、`[[providers.model_overrides]]` で複数モデルの表示名と

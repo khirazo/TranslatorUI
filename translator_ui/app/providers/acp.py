@@ -5,16 +5,23 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
+import re
 import shutil
 import signal
 import subprocess
-import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from app.config import ACP_DEFAULT_MODEL_ID, ModelSettings, ProviderSettings, TranslationOptions
+from app.config import (
+    ACP_DEFAULT_MODEL_ID,
+    REPOSITORY_ROOT,
+    ModelSettings,
+    ProviderSettings,
+    TranslationOptions,
+)
 from app.providers.base import TranslationProviderError
 from app.providers.openai_compatible import (
     _BoundaryOutputFilter,
@@ -25,9 +32,11 @@ from app.providers.openai_compatible import (
 _PROTOCOL_VERSION = 1
 _POLL_SECONDS = 0.25
 _STDERR_TAIL_CHARS = 2_000
+ACP_WORKSPACE_DIR = REPOSITORY_ROOT / "acp-workspace"
 # ACP agents are expensive local child processes.  Serializing them avoids
 # accidental concurrent agent sessions from repeated browser submissions.
 _ACP_SLOT = asyncio.Semaphore(1)
+logger = logging.getLogger("uvicorn.error")
 
 
 class AcpProvider:
@@ -37,6 +46,7 @@ class AcpProvider:
         self._settings = settings
         self._stderr_tasks: dict[asyncio.subprocess.Process, asyncio.Task[str]] = {}
         self._auth_methods: tuple[str, ...] = ()
+        self._operation = "process startup"
 
     async def translate(
         self,
@@ -67,57 +77,65 @@ class AcpProvider:
             async with _ACP_SLOT:
                 async with asyncio.timeout(self._settings.timeout_seconds):
                     command = self._command()
-                    with tempfile.TemporaryDirectory(prefix="translator-ui-acp-") as raw_cwd:
-                        process = await self._start(command, Path(raw_cwd))
-                        try:
-                            await self._initialize(process)
-                            created = await self._request(
-                                process, 2, "session/new", {"cwd": raw_cwd, "mcpServers": []}
+                    workspace = self._workspace()
+                    logger.info(
+                        "ACP provider %s: starting capability discovery in the dedicated "
+                        "workspace.",
+                        self._settings.id,
+                    )
+                    process = await self._start(command, workspace)
+                    try:
+                        logger.info("ACP provider %s: initializing agent.", self._settings.id)
+                        await self._initialize(process)
+                        logger.info(
+                            "ACP provider %s: creating capability session.", self._settings.id
+                        )
+                        created = await self._request(
+                            process, 2, "session/new", {"cwd": str(workspace), "mcpServers": []}
+                        )
+                        session_id = created.get("sessionId")
+                        if not isinstance(session_id, str) or not session_id:
+                            raise TranslationProviderError(
+                                "ACP agent did not create a translation session."
                             )
-                            session_id = created.get("sessionId")
-                            if not isinstance(session_id, str) or not session_id:
-                                raise TranslationProviderError(
-                                    "ACP agent did not create a translation session."
-                                )
-                            await self._set_mode(process, session_id, created)
-                            model_option = self._select_option(
-                                created.get("configOptions"), "model"
+                            logger.info(
+                                "ACP provider %s: reading model capabilities.", self._settings.id
                             )
-                            if model_option is None:
-                                return (
-                                    ModelSettings(id=ACP_DEFAULT_MODEL_ID, name="Agent default"),
-                                )
-                            discovered: list[ModelSettings] = []
-                            for request_id, model_id in enumerate(
-                                self._option_values(model_option), start=30
-                            ):
-                                result = await self._request(
-                                    process,
-                                    request_id,
-                                    "session/set_config_option",
-                                    {
-                                        "sessionId": session_id,
-                                        "configId": model_option["id"],
-                                        "value": model_id,
-                                    },
-                                )
-                                effort_option = self._select_option(
-                                    result.get("configOptions"), "thought_level"
-                                )
-                                efforts = self._option_values(effort_option)
-                                discovered.append(
-                                    ModelSettings(
-                                        id=model_id,
-                                        efforts=efforts,
-                                        default_effort=efforts[0] if efforts else None,
-                                        effort_request_field="effort" if efforts else None,
-                                    )
-                                )
-                            return tuple(discovered) or (
-                                ModelSettings(id=ACP_DEFAULT_MODEL_ID, name="Agent default"),
+                        await self._set_mode(process, session_id, created)
+                        model_option = self._select_option(created.get("configOptions"), "model")
+                        if model_option is None:
+                            return (ModelSettings(id=ACP_DEFAULT_MODEL_ID, name="Agent default"),)
+                        discovered: list[ModelSettings] = []
+                        for request_id, model_id in enumerate(
+                            self._option_values(model_option), start=30
+                        ):
+                            result = await self._request(
+                                process,
+                                request_id,
+                                "session/set_config_option",
+                                {
+                                    "sessionId": session_id,
+                                    "configId": model_option["id"],
+                                    "value": model_id,
+                                },
                             )
-                        finally:
-                            await self._stop_tree(process)
+                            effort_option = self._select_option(
+                                result.get("configOptions"), "thought_level"
+                            )
+                            efforts = self._option_values(effort_option)
+                            discovered.append(
+                                ModelSettings(
+                                    id=model_id,
+                                    efforts=efforts,
+                                    default_effort=efforts[0] if efforts else None,
+                                    effort_request_field="effort" if efforts else None,
+                                )
+                            )
+                        return tuple(discovered) or (
+                            ModelSettings(id=ACP_DEFAULT_MODEL_ID, name="Agent default"),
+                        )
+                    finally:
+                        await self._stop_tree(process)
         except TimeoutError as error:
             raise TranslationProviderError(
                 "ACP agent did not finish capability discovery within "
@@ -138,50 +156,51 @@ class AcpProvider:
         )
         output_filter = _BoundaryOutputFilter(boundary)
 
-        # A per-request system temporary directory cannot contain the application's
-        # config, profiles, API keys, or saved translations.
-        with tempfile.TemporaryDirectory(prefix="translator-ui-acp-") as raw_cwd:
-            process = await self._start(command, Path(raw_cwd))
-            try:
-                await self._initialize(process)
-                created = await self._request(
-                    process, 2, "session/new", {"cwd": raw_cwd, "mcpServers": []}
-                )
-                session_id = created.get("sessionId")
-                if not isinstance(session_id, str) or not session_id:
-                    raise TranslationProviderError(
-                        "ACP agent did not create a translation session."
-                    )
-                await self._set_mode(process, session_id, created)
-                config_options = created.get("configOptions")
-                request_id = 3
-                request_id, config_options = await self._set_option(
-                    process, request_id, session_id, config_options, "model", options.model_id
-                )
-                request_id, _ = await self._set_option(
-                    process, request_id, session_id, config_options, "thought_level", options.effort
-                )
-                await self._send(
-                    process,
-                    {
-                        "jsonrpc": "2.0",
-                        "id": request_id,
-                        "method": "session/prompt",
-                        "params": {
-                            "sessionId": session_id,
-                            "prompt": [{"type": "text", "text": prompt}],
-                        },
+        workspace = self._workspace()
+        process = await self._start(command, workspace)
+        try:
+            await self._initialize(process)
+            created = await self._request(
+                process, 2, "session/new", {"cwd": str(workspace), "mcpServers": []}
+            )
+            session_id = created.get("sessionId")
+            if not isinstance(session_id, str) or not session_id:
+                raise TranslationProviderError("ACP agent did not create a translation session.")
+            await self._set_mode(process, session_id, created)
+            config_options = created.get("configOptions")
+            request_id = 3
+            request_id, config_options = await self._set_option(
+                process, request_id, session_id, config_options, "model", options.model_id
+            )
+            request_id, _ = await self._set_option(
+                process, request_id, session_id, config_options, "thought_level", options.effort
+            )
+            await self._send(
+                process,
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "method": "session/prompt",
+                    "params": {
+                        "sessionId": session_id,
+                        "prompt": [{"type": "text", "text": prompt}],
                     },
-                )
-                async for chunk in self._stream_prompt(process, request_id):
-                    filtered = output_filter.feed(chunk)
-                    if filtered:
-                        yield filtered
-                final = output_filter.finish()
-                if final:
-                    yield final
-            finally:
-                await self._stop_tree(process)
+                },
+            )
+            async for chunk in self._stream_prompt(process, request_id):
+                filtered = output_filter.feed(chunk)
+                if filtered:
+                    yield filtered
+            final = output_filter.finish()
+            if final:
+                yield final
+        finally:
+            await self._stop_tree(process)
+
+    @staticmethod
+    def _workspace() -> Path:
+        ACP_WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+        return ACP_WORKSPACE_DIR.resolve()
 
     def _command(self) -> tuple[str, ...]:
         if not self._settings.command:
@@ -232,7 +251,7 @@ class AcpProvider:
         try:
             await process.stdin.drain()
         except (BrokenPipeError, ConnectionResetError) as error:
-            raise TranslationProviderError("ACP agent exited unexpectedly.") from error
+            raise await self._unexpected_exit(process) from error
 
     async def _initialize(self, process: asyncio.subprocess.Process) -> None:
         result = await self._request(
@@ -269,16 +288,53 @@ class AcpProvider:
                 line = await asyncio.wait_for(process.stdout.readline(), timeout=_POLL_SECONDS)
             except TimeoutError as error:
                 if process.returncode is not None:
-                    raise TranslationProviderError("ACP agent exited unexpectedly.") from error
+                    raise await self._unexpected_exit(process) from error
                 continue
             if not line:
-                raise TranslationProviderError("ACP agent exited unexpectedly.")
+                raise await self._unexpected_exit(process)
             try:
                 message = json.loads(line)
             except (TypeError, json.JSONDecodeError):
                 continue
             if isinstance(message, dict):
                 return message
+
+    async def _unexpected_exit(
+        self, process: asyncio.subprocess.Process
+    ) -> TranslationProviderError:
+        returncode = process.returncode
+        if returncode is None:
+            returncode = await process.wait()
+        stderr_task = self._stderr_tasks.get(process)
+        stderr_tail = await stderr_task if stderr_task is not None else ""
+        if stderr_tail:
+            logger.warning(
+                "ACP provider %s exited during %s with code %s. Standard error tail "
+                "(credentials redacted):\n%s",
+                self._settings.id,
+                self._operation,
+                returncode,
+                self._redact_diagnostic(stderr_tail),
+            )
+        else:
+            logger.warning(
+                "ACP provider %s exited during %s with code %s and no standard error output.",
+                self._settings.id,
+                self._operation,
+                returncode,
+            )
+        return TranslationProviderError(
+            f"ACP agent exited unexpectedly during {self._operation} (exit code {returncode})."
+        )
+
+    @staticmethod
+    def _redact_diagnostic(value: str) -> str:
+        redacted = re.sub(r"(?i)\b(bearer\s+)[^\s]+", r"\1[REDACTED]", value)
+        return re.sub(
+            r"(?i)([\"']?(?:api[_-]?key|token|secret|password)[\"']?\s*[:=]\s*[\"']?)[^\s,;\"'}]+",
+            r"\1[REDACTED]",
+            redacted,
+        )
 
     async def _request(
         self,
@@ -287,6 +343,7 @@ class AcpProvider:
         method: str,
         params: dict[str, Any],
     ) -> dict[str, Any]:
+        self._operation = method
         await self._send(
             process, {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
         )

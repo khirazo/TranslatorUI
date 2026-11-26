@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Callable
 from threading import Lock
 
@@ -10,6 +12,8 @@ import httpx
 from app.config import ModelSettings, ProviderSettings, Settings
 from app.providers.acp import AcpProvider
 from app.providers.base import TranslationProviderError
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class ProviderCatalogStore:
@@ -40,8 +44,11 @@ class ProviderCatalogStore:
         """Query every provider and retain its previous entry if its query fails."""
         previous, _ = self.current()
         refreshed: dict[str, tuple[ModelSettings, ...]] = {}
+        logger.info("Refreshing model catalogs.")
         async with self._client_factory() as client:
             for provider in settings.openai_compatible_providers:
+                started = time.monotonic()
+                logger.info("Refreshing model catalog for provider %s.", provider.id)
                 try:
                     response = await client.get(provider.model_url, headers=self._headers(provider))
                     response.raise_for_status()
@@ -60,15 +67,41 @@ class ProviderCatalogStore:
                     refreshed[provider.id] = tuple(
                         provider.model_for_catalog(model_id) for model_id in ids
                     )
-                except (httpx.HTTPError, ValueError, TypeError):
+                    logger.info(
+                        "Model catalog for provider %s contains %d model(s) (%.1f s).",
+                        provider.id,
+                        len(ids),
+                        time.monotonic() - started,
+                    )
+                except (httpx.HTTPError, ValueError, TypeError) as error:
+                    logger.warning(
+                        "Model catalog refresh failed for provider %s after %.1f s: %s",
+                        provider.id,
+                        time.monotonic() - started,
+                        error,
+                    )
                     if provider.id in previous:
                         refreshed[provider.id] = previous[provider.id]
         for provider in settings.selectable_providers:
             if provider.kind != "acp":
                 continue
+            started = time.monotonic()
+            logger.info("Refreshing ACP model catalog for provider %s.", provider.id)
             try:
                 refreshed[provider.id] = await AcpProvider(provider).discover_models()
-            except TranslationProviderError:
+                logger.info(
+                    "ACP model catalog for provider %s contains %d model(s) (%.1f s).",
+                    provider.id,
+                    len(refreshed[provider.id]),
+                    time.monotonic() - started,
+                )
+            except TranslationProviderError as error:
+                logger.warning(
+                    "ACP model catalog refresh failed for provider %s after %.1f s: %s",
+                    provider.id,
+                    time.monotonic() - started,
+                    error,
+                )
                 if provider.id in previous:
                     refreshed[provider.id] = previous[provider.id]
         with self._lock:

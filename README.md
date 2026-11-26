@@ -127,7 +127,8 @@ the environment-variable name, such as `api_key_env = "OPENAI_COMPAT_API_KEY"`.
 
 Enabled `openai_compatible` and ACP providers are available in the UI. ACP is disabled by default.
 When enabling it, use an agent-advertised mode only when appropriate and use an array-form `command`
-for a trusted local CLI only. Each translation uses a fresh child process and private temporary workspace; TranslatorUI
+for a trusted local CLI only. Each translation uses a fresh child process and the dedicated empty
+`acp-workspace` directory; TranslatorUI
 offers no filesystem or terminal capability and rejects every permission request. Models and effort
 choices come from the agent's capabilities. An agent that does not expose a model selector appears
 as **Agent default** and retains its own default model. Network and authentication environment for
@@ -142,9 +143,10 @@ advertises a supported mode.
 
 Before enabling ACP, verify the actual stdio command. Do not assume that a coding CLI exposes
 `<cli> acp`: Codex can use the separate wrapper
-`npx -y @agentclientprotocol/codex-acp@2.5.0`. This pinned package has limited translation
-coverage and must be revalidated before use. If no working ACP command is available, leave the
-provider disabled; TranslatorUI's OpenAI-compatible providers remain available.
+`npx -y @agentclientprotocol/codex-acp@2.5.0`. The template also includes IBM Bob Shell and
+Claude Agent examples; all three completed basic text translations on November 26, 2026. The
+pinned wrappers and agent behavior must be revalidated before use. If no working ACP command is
+available, leave the provider disabled; TranslatorUI's OpenAI-compatible providers remain available.
 
 Each provider may retain its legacy `model` field and add one or more
 `[[providers.model_overrides]]` entries. An override supplies a display name and, where needed, a
