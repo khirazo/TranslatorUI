@@ -157,6 +157,13 @@ send that value upstream. The **Reload settings** button rereads
 `.env` and the selected TOML without restarting the app. Parent-process environment
 variables override `.env`; failed reloads leave the running configuration unchanged.
 
+The `plamo3` profile sends PFML3 directly as a streaming OpenAI-compatible
+Completions `prompt`, bypassing the model's chat template. Its default endpoint is
+`/v1/completions`; set `completions_endpoint` in a provider entry, or
+`LLM_COMPLETIONS_ENDPOINT` in legacy `.env` configuration, only when the server
+uses a different route. PLaMo does not automatically retry through Chat
+Completions because that may apply an incompatible chat template.
+
 `max_tokens` is an output cap, not a model context-window setting. Its provider default is 4,096;
 set `max_tokens` in a `model_overrides` entry when a specific model needs a different cap. The
 model-specific value takes precedence. Keep the input plus output within the actual context length
@@ -167,9 +174,9 @@ only the fixed sidecar `translator-ui.profiles.toml` (or the configured `profile
 connection TOML or `.env`. Profile writes use a revision check and atomic replacement, so a manual
 edit made after the profile list was loaded is rejected rather than overwritten.
 
-The `generic` translation profile sends a model-neutral translation instruction and preserves XML,
-HTML, placeholders, and code structure while translating natural-language text. It does not send
-PLaMo-specific prompt tokens or stop tokens.
+The `generic` translation profile sends a model-neutral translation instruction through Chat
+Completions and preserves XML, HTML, placeholders, and code structure while translating
+natural-language text. It does not send PLaMo-specific prompt tokens or stop tokens.
 
 The UI remembers the selected provider, model, effort, source and target languages, and Japanese
 writing style in the browser's local storage for this origin. It does not store source text,

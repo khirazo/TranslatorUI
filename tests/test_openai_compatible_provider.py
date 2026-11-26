@@ -83,21 +83,24 @@ def test_provider_settings_resolve_default_relative_and_explicit_api_endpoints()
     settings = provider_settings(base_url="http://provider.test/root/")
     assert settings.model_url == "http://provider.test/v1/models"
     assert settings.chat_url == "http://provider.test/v1/chat/completions"
+    assert settings.completions_url == "http://provider.test/v1/completions"
 
     custom = provider_settings(
         base_url="http://provider.test/base",
         model_endpoint="/catalog/models",
         chat_endpoint="https://chat.provider.test/generate",
+        completions_endpoint="https://completion.provider.test/generate",
     )
     assert custom.model_url == "http://provider.test/catalog/models"
     assert custom.chat_url == "https://chat.provider.test/generate"
+    assert custom.completions_url == "https://completion.provider.test/generate"
 
 
 @pytest.mark.asyncio
 async def test_provider_parses_events_split_at_arbitrary_byte_boundaries() -> None:
     upstream = (
-        b'data: {"choices":[{"delta":{"content":"\xe3\x81\x93\xe3\x82\x93"}}]}\n\n'
-        b'data: {"choices":[{"delta":{"content":"\xe3\x81\xab\xe3\x81\xa1\xe3\x81\xaf"}}]}\n\n'
+        b'data: {"choices":[{"text":"\xe3\x81\x93\xe3\x82\x93"}]}\n\n'
+        b'data: {"choices":[{"text":"\xe3\x81\xab\xe3\x81\xa1\xe3\x81\xaf"}]}\n\n'
         b"data: [DONE]\n\n"
     )
     chunks = [upstream[index : index + 5] for index in range(0, len(upstream), 5)]
@@ -111,11 +114,11 @@ async def test_provider_parses_events_split_at_arbitrary_byte_boundaries() -> No
         async for token in provider.translate(text="hello", source_lang="en", target_lang="ja")
     ]
 
-    assert tokens == ["こん", "にちは"]
+    assert "".join(tokens) == "こんにちは"
 
 
 @pytest.mark.asyncio
-async def test_provider_stops_on_finish_reason_and_sends_plamo_three_payload() -> None:
+async def test_provider_stops_on_finish_reason_and_sends_plamo_three_completion_payload() -> None:
     captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -123,7 +126,7 @@ async def test_provider_stops_on_finish_reason_and_sends_plamo_three_payload() -
         captured["payload"] = json.loads(request.content)
         return httpx.Response(
             200,
-            content=b'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\n',
+            content=b'data: {"choices":[{"text":"hi","finish_reason":"stop"}]}\n\n',
         )
 
     provider = provider_for(httpx.MockTransport(handler))
@@ -136,14 +139,9 @@ async def test_provider_stops_on_finish_reason_and_sends_plamo_three_payload() -
     assert captured["headers"]["authorization"] == "Bearer secret-key"  # type: ignore[index]
     assert captured["payload"] == {
         "model": "plamo-3-translate-0.8b",
-        "messages": [
-            {
-                "role": "user",
-                "content": build_pfml3_prompt(
-                    text="こんにちは", source_lang="ja", target_lang="en", form=None
-                ),
-            }
-        ],
+        "prompt": build_pfml3_prompt(
+            text="こんにちは", source_lang="ja", target_lang="en", form=None
+        ),
         "stream": True,
         "temperature": 0,
         "max_tokens": 4096,
@@ -277,24 +275,26 @@ async def test_generic_provider_removes_an_echoed_boundary_across_sse_tokens() -
 
 
 @pytest.mark.parametrize("style", ["polite", "plain"])
-def test_plamo_three_sends_japanese_form_in_chat_template_kwargs(style: str) -> None:
+def test_plamo_three_sends_japanese_form_in_completion_prompt(style: str) -> None:
     provider = OpenAICompatibleProvider(provider_settings())
 
     payload = provider._request_payload(
         text="hello",
         source_lang="en",
         target_lang="ja",
-        options=TranslationOptions(model_id="plamo-3-translate-0.8b", japanese_style=style),
+        options=TranslationOptions(
+            model_id="plamo-3-translate-0.8b",
+            japanese_style=style,
+            effort="high",
+            effort_request_field="reasoning_effort",
+        ),
     )
 
-    assert payload["messages"] == [
-        {
-            "role": "user",
-            "content": build_pfml3_prompt(
-                text="hello", source_lang="en", target_lang="ja", form=style
-            ),
-        }
-    ]
+    assert payload["prompt"] == build_pfml3_prompt(
+        text="hello", source_lang="en", target_lang="ja", form=style
+    )
+    assert "messages" not in payload
+    assert payload["reasoning_effort"] == "high"
 
 
 @pytest.mark.asyncio
@@ -308,7 +308,11 @@ async def test_provider_uses_configured_chat_endpoint() -> None:
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     provider = OpenAICompatibleProvider(
-        provider_settings(base_url="http://provider.test", chat_endpoint="/custom/openai/chat"),
+        provider_settings(
+            base_url="http://provider.test",
+            chat_endpoint="/custom/openai/chat",
+            translation_profile="generic",
+        ),
         client,
     )
     tokens = [
@@ -321,13 +325,63 @@ async def test_provider_uses_configured_chat_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_plamo_provider_uses_configured_completions_endpoint_and_removes_stop_token(
+) -> None:
+    received_url: str | None = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal received_url
+        received_url = str(request.url)
+        stream = (
+            b'data: {"choices":[{"text":"Hello <|plamo:"}]}\n\n'
+            b'data: {"choices":[{"text":"tag|>"}]}\n\n'
+            b"data: [DONE]\n\n"
+        )
+        return httpx.Response(200, content=stream)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = OpenAICompatibleProvider(
+        provider_settings(base_url="http://provider.test", completions_endpoint="/raw/completions"),
+        client,
+    )
+    tokens = [
+        token
+        async for token in provider.translate(text="hello", source_lang="en", target_lang="ja")
+    ]
+
+    assert "".join(tokens) == "Hello "
+    assert received_url == "http://provider.test/raw/completions"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [404, 405])
+async def test_plamo_missing_completions_endpoint_does_not_retry_chat(status_code: int) -> None:
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(str(request.url))
+        return httpx.Response(status_code)
+
+    provider = provider_for(httpx.MockTransport(handler))
+
+    with pytest.raises(TranslationProviderError, match="requires an OpenAI-compatible"):
+        async for _ in provider.translate(text="hello", source_lang="en", target_lang="ja"):
+            pass
+
+    assert requests == ["http://llm.test/v1/completions"]
+
+
+@pytest.mark.asyncio
 async def test_closing_provider_generator_closes_upstream_stream() -> None:
     stream = BlockingStream()
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, stream=stream)
 
-    provider = provider_for(httpx.MockTransport(handler))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = OpenAICompatibleProvider(
+        provider_settings(translation_profile="generic", model="generic-model"), client
+    )
     translation = provider.translate(text="hello", source_lang="en", target_lang="ja")
 
     assert await anext(translation) == "first"

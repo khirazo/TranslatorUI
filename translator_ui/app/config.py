@@ -110,6 +110,7 @@ class ProviderSettings(BaseModel):
     model_rules: tuple[ModelRuleSettings, ...] = ()
     model_endpoint: str = "/v1/models"
     chat_endpoint: str = "/v1/chat/completions"
+    completions_endpoint: str = "/v1/completions"
     api_key_env: str | None = None
     api_key: str | None = Field(default=None, repr=False)
     max_tokens: int = Field(default=4096, gt=0)
@@ -179,6 +180,10 @@ class ProviderSettings(BaseModel):
     @property
     def chat_url(self) -> str:
         return self.resolve_endpoint(self.chat_endpoint)
+
+    @property
+    def completions_url(self) -> str:
+        return self.resolve_endpoint(self.completions_endpoint)
 
     @property
     def selectable_models(self) -> tuple[ModelSettings, ...]:
@@ -359,6 +364,7 @@ class Settings(BaseModel):
             model=values.get("LLM_MODEL", "plamo-3-translate-0.8b"),
             model_endpoint=values.get("LLM_MODEL_ENDPOINT", "/v1/models"),
             chat_endpoint=values.get("LLM_CHAT_ENDPOINT", "/v1/chat/completions"),
+            completions_endpoint=values.get("LLM_COMPLETIONS_ENDPOINT", "/v1/completions"),
             api_key=values.get("LLM_API_KEY") or None,
             max_tokens=values.get("LLM_MAX_TOKENS", "4096"),
         )

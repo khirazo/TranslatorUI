@@ -1,4 +1,4 @@
-"""Streaming provider for OpenAI-compatible Chat Completions endpoints."""
+"""Streaming provider for OpenAI-compatible Chat and Completions endpoints."""
 
 from __future__ import annotations
 
@@ -191,8 +191,40 @@ class _BoundaryOutputFilter:
         return emitted
 
 
+class _TrailingStopTokenFilter:
+    """Suppress only stop tokens that occur at the end of a streamed response."""
+
+    def __init__(self, stop_tokens: list[str]) -> None:
+        self._stop_tokens = tuple(stop_tokens)
+        self._buffer = ""
+
+    def feed(self, text: str) -> str:
+        self._buffer += text
+        retained = max(
+            (
+                prefix_length
+                for token in self._stop_tokens
+                for prefix_length in range(1, len(token) + 1)
+                if self._buffer.endswith(token[:prefix_length])
+            ),
+            default=0,
+        )
+        if not retained:
+            emitted, self._buffer = self._buffer, ""
+            return emitted
+        emitted, self._buffer = self._buffer[:-retained], self._buffer[-retained:]
+        return emitted
+
+    def finish(self) -> str:
+        while True:
+            token = next((item for item in self._stop_tokens if self._buffer.endswith(item)), None)
+            if token is None:
+                return self._buffer
+            self._buffer = self._buffer[: -len(token)]
+
+
 class OpenAICompatibleProvider:
-    """Translate via PLaMo 3's OpenAI-compatible Chat Completions interface."""
+    """Translate through OpenAI-compatible Chat and Completions endpoints."""
 
     def __init__(self, settings: ProviderSettings, client: httpx.AsyncClient | None = None) -> None:
         self._settings = settings
@@ -210,22 +242,30 @@ class OpenAICompatibleProvider:
         translation_profile = (
             options.translation_profile if options else self._settings.translation_profile
         )
-        content = text
         if translation_profile == "plamo3":
-            content = build_pfml3_prompt(
-                text=text,
-                source_lang=source_lang,
-                target_lang=target_lang,
-                form=options.japanese_style if options else None,
-            )
-        elif translation_profile == "generic":
-            content = build_generic_prompt(
-                text=text,
-                source_lang=source_lang,
-                target_lang=target_lang,
-                form=options.japanese_style if options else None,
-                boundary=boundary or generate_translation_boundary(text),
-            )
+            payload: dict[str, Any] = {
+                "model": (options.model_id if options else self._settings.model),
+                "prompt": build_pfml3_prompt(
+                    text=text,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    form=options.japanese_style if options else None,
+                ),
+                "stream": True,
+                "temperature": 0,
+                "max_tokens": options.max_tokens if options else self._settings.max_tokens,
+                "stop": PLAMO_STOP_TOKENS,
+            }
+            if options and options.effort and options.effort_request_field:
+                payload[options.effort_request_field] = options.effort
+            return payload
+        content = build_generic_prompt(
+            text=text,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            form=options.japanese_style if options else None,
+            boundary=boundary or generate_translation_boundary(text),
+        )
         payload: dict[str, Any] = {
             "model": (options.model_id if options else self._settings.model),
             "messages": [{"role": "user", "content": content}],
@@ -233,8 +273,6 @@ class OpenAICompatibleProvider:
             "temperature": 0,
             "max_tokens": options.max_tokens if options else self._settings.max_tokens,
         }
-        if translation_profile == "plamo3":
-            payload["stop"] = PLAMO_STOP_TOKENS
         if options and options.effort and options.effort_request_field:
             payload[options.effort_request_field] = options.effort
         return payload
@@ -256,17 +294,25 @@ class OpenAICompatibleProvider:
         """Yield content fields from an upstream OpenAI-style SSE response."""
         owns_client = self._client is None
         client = self._client or create_upstream_client()
-        boundary = (
-            generate_translation_boundary(text)
-            if (options.translation_profile if options else self._settings.translation_profile)
-            == "generic"
+        translation_profile = (
+            options.translation_profile if options else self._settings.translation_profile
+        )
+        boundary = generate_translation_boundary(text) if translation_profile == "generic" else None
+        output_filter = _BoundaryOutputFilter(boundary) if boundary else None
+        stop_filter = (
+            _TrailingStopTokenFilter(PLAMO_STOP_TOKENS)
+            if translation_profile == "plamo3"
             else None
         )
-        output_filter = _BoundaryOutputFilter(boundary) if boundary else None
+        request_url = (
+            self._settings.completions_url
+            if translation_profile == "plamo3"
+            else self._settings.chat_url
+        )
         try:
             async with client.stream(
                 "POST",
-                self._settings.chat_url,
+                request_url,
                 headers=self._headers(),
                 json=self._request_payload(
                     text=text,
@@ -277,6 +323,14 @@ class OpenAICompatibleProvider:
                 ),
             ) as response:
                 if response.status_code != httpx.codes.OK:
+                    if translation_profile == "plamo3" and response.status_code in {
+                        httpx.codes.NOT_FOUND,
+                        httpx.codes.METHOD_NOT_ALLOWED,
+                    }:
+                        raise TranslationProviderError(
+                            "The selected PLaMo provider requires an OpenAI-compatible "
+                            "/v1/completions endpoint."
+                        )
                     raise TranslationProviderError(
                         f"Translation provider returned HTTP {response.status_code}."
                     )
@@ -285,6 +339,10 @@ class OpenAICompatibleProvider:
                     if event_data == "[DONE]":
                         if output_filter:
                             final = output_filter.finish()
+                            if final:
+                                yield final
+                        if stop_filter:
+                            final = stop_filter.finish()
                             if final:
                                 yield final
                         return
@@ -301,11 +359,20 @@ class OpenAICompatibleProvider:
                     choice = choices[0]
                     if not isinstance(choice, dict):
                         continue
-                    delta = choice.get("delta")
-                    if isinstance(delta, dict) and isinstance(delta.get("content"), str):
-                        token = delta["content"]
+                    token: str | None = None
+                    if translation_profile == "plamo3":
+                        candidate = choice.get("text")
+                        if isinstance(candidate, str):
+                            token = candidate
+                    else:
+                        delta = choice.get("delta")
+                        if isinstance(delta, dict) and isinstance(delta.get("content"), str):
+                            token = delta["content"]
+                    if token is not None:
                         if output_filter:
                             token = output_filter.feed(token)
+                        if stop_filter:
+                            token = stop_filter.feed(token)
                         if token:
                             yield token
                     if choice.get("finish_reason") is not None:
@@ -313,9 +380,17 @@ class OpenAICompatibleProvider:
                             final = output_filter.finish()
                             if final:
                                 yield final
+                        if stop_filter:
+                            final = stop_filter.finish()
+                            if final:
+                                yield final
                         return
                 if output_filter:
                     final = output_filter.finish()
+                    if final:
+                        yield final
+                if stop_filter:
+                    final = stop_filter.finish()
                     if final:
                         yield final
         except httpx.HTTPError as error:

@@ -14,6 +14,15 @@ def test_legacy_config_uses_localhost_by_default() -> None:
 
     assert settings.provider_for(None).base_url == "http://localhost:1234"  # type: ignore[union-attr]
     assert settings.provider_for(None).max_tokens == 4096  # type: ignore[union-attr]
+    assert settings.provider_for(None).completions_url == "http://localhost:1234/v1/completions"  # type: ignore[union-attr]
+
+
+def test_legacy_config_can_override_completions_endpoint() -> None:
+    settings = Settings.legacy(
+        {"LLM_COMPLETIONS_ENDPOINT": "http://localhost:4321/completion"}
+    )
+
+    assert settings.provider_for(None).completions_url == "http://localhost:4321/completion"  # type: ignore[union-attr]
 
 
 def test_toml_provider_registry_loads_secret_from_environment(tmp_path, monkeypatch) -> None:
@@ -33,6 +42,7 @@ enabled = true
 base_url = "http://localhost:1234"
 model = "plamo-3-translate-0.8b"
 translation_profile = "plamo3"
+completions_endpoint = "/custom/completions"
 
 [[providers]]
 id = "generic"
@@ -66,6 +76,7 @@ command = ["agent", "acp"]
         "future-acp",
     ]
     assert settings.provider_for("generic").api_key == "secret"  # type: ignore[union-attr]
+    assert settings.provider_for("plamo").completions_url == "http://localhost:1234/custom/completions"  # type: ignore[union-attr]
     assert settings.provider_for("future-acp").kind == "acp"  # type: ignore[union-attr]
 
 

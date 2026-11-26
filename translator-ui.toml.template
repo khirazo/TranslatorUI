@@ -15,6 +15,9 @@ name = "OpenAI-compatible local service"
 kind = "openai_compatible"
 enabled = true
 base_url = "http://localhost:1234"
+# PLaMo uses raw Completions so its PFML prompt bypasses the model chat template.
+# Override only if the compatible server exposes this endpoint elsewhere.
+completions_endpoint = "/v1/completions"
 # A 4,096-token output cap is a portable default. Model overrides may lower or raise it.
 max_tokens = 4096
 default_translation_profile = "generic"
